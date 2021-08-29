@@ -103,6 +103,11 @@
         // For barba we'd do barba.go('url.html', ...) I think?
         // For Sennajs it'd be app.navigate('url.html') by the look of it;
         var file = msg.filename[0];
+        var definitelyRequiresReload = msg.filename[3];
+        if (definitelyRequiresReload) {
+            console.debug(logPage, logFmt, "Server suggested that this must do a full reload, because " + file + " changed");
+            return refreshStrategy(msg);
+        }
         // @ts-ignore
         var unpoly = window.up, turbolinks = window.Turbolinks, Swup = window.Swup, swupInstance = window.swup, url = window.location;
         if (unpoly && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.version) && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.reload)) {

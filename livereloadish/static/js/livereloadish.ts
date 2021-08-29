@@ -19,7 +19,7 @@
         asset_type: MimeType,
         old_time: number,
         new_time: number,
-        filename: [string, string, number],
+        filename: [string, string, number, boolean],
     }
 
     interface ReloadStrategy { (msg: AssetChangeData): void }
@@ -127,6 +127,11 @@
         // For barba we'd do barba.go('url.html', ...) I think?
         // For Sennajs it'd be app.navigate('url.html') by the look of it;
         const file = msg.filename[0];
+        const definitelyRequiresReload = msg.filename[3];
+        if (definitelyRequiresReload) {
+            console.debug(logPage, logFmt, `Server suggested that this must do a full reload, because ${file} changed`);
+            return refreshStrategy(msg);
+        }
         // @ts-ignore
         const { up: unpoly, Turbolinks: turbolinks, Swup: Swup, swup: swupInstance, location: url} = window;
         if (unpoly && unpoly?.version && unpoly?.reload) {
