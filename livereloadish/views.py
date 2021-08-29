@@ -193,21 +193,6 @@ def sse(
                 for content_type, files in tuple(appconf.seen.items()):
                     for key, file in tuple(files.items()):
                         file_count += 1
-                        # If the file hasn't been changed recently, stop watching it
-                        # until something reloads it in, to avoid ever-growing
-                        # the scanlist over long processes without restart due to
-                        # the autoreloader being triggered because of a pythong change.
-                        if file.mtime < (
-                            last_scan - (time.time() * appconf.stale_after)
-                        ):
-                            logger.info(
-                                "[%s] Livereloadish eviction due to staleness for %s",
-                                reqid,
-                                file.relative_path,
-                                extra={"request": request},
-                            )
-                            appconf.seen[content_type].pop(key, None)
-                            continue
                         # When multiple SSEs are running, each is doing a separate
                         # scan (yeah not ideal but I also don't care that much and
                         # don't have more than 2 browsers in play at once so whatever)
