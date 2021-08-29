@@ -2,4 +2,4 @@ include LICENSE
 include README.rst
 include Makefile
 include CHANGELOG
-global-include *.rst *.py *.html
+global-include *.rst *.py *.html *.js *.json *.js.map *.ts

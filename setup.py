@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
-from setuptools.command.test import test as TestCommand
+from setuptools import setup
+
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 
