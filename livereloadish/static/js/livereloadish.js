@@ -1,82 +1,6 @@
 "use strict";
 (function () {
-    // interface ContentType { "text/css" | "text/javascript"}
-    //
-    // interface ReloadStrategy {
-    //     reload: (msg: AssetChangeData) => void
-    // }
-    //
-    // interface ReplaceStrategy<T> {
-    //     replace: (element: T, mtime: number) => string
-    // }
-    //
-    // class CSSReloadStrategy implements ReloadStrategy, ReplaceStrategy<HTMLLinkElement> {
-    //     constructor() {
-    //     }
-    //     reload(msg: AssetChangeData) {
-    //         const file = msg.filename[0];
-    //         const reloadableLinkElements = document.querySelectorAll(`link[rel=stylesheet][href*="${file}"]:not([data-no-reload]):not([data-pending-removal])`);
-    //         const linkElements: HTMLLinkElement[] = Array.prototype.slice.call(reloadableLinkElements);
-    //         for (const linkElement of linkElements) {
-    //             this.replace(linkElement, msg.new_time);
-    //         }
-    //     }
-    //
-    //     replace(element: HTMLLinkElement, mtime: number): string {
-    //         // Doing it this way, by creating a new link Node and deleting the old one
-    //         // afterwards avoids the classic FOUC (flash-of-unstyled-content)
-    //         // compared to just changing the URL, which depending on the browser (hi Firefox)
-    //         // may unload the styles and repaint them.
-    //         // using .href causes Chrome, at least, to give you the _whole_ URL, scheme + hostname etc
-    //         // which could be problematic using *= instead of ^=
-    //         const originalHref = element.getAttribute('href');
-    //         if (originalHref !== null) {
-    //             const newelement = document.createElement("element");
-    //             for (let i = 0; i < element.attributes.length; i++) {
-    //                 const {name, value} = element.attributes[i];
-    //                 newelement.setAttribute(name, value)
-    //             }
-    //             // uuid regex: [0-9a-fA-F\-]{36}
-    //             const newHref = originalHref.replace(/(&|\\?)livereloadish=([0-9]+.[0-9]+)/, `$1livereloadish=${mtime}`);
-    //             newelement.setAttribute('href', newHref);
-    //             const onComplete = function (_event: Event) {
-    //                 console.debug(logPrefix, logFmt, `Removing ${originalHref} in favour of ${newHref}`);
-    //                 element.parentNode?.removeChild(element);
-    //             };
-    //             newelement.addEventListener('error', onComplete);
-    //             newelement.addEventListener('load', onComplete);
-    //             console.debug(logPrefix, logFmt, `Adding ${newHref} to replace ${originalHref}`);
-    //             element.setAttribute('data-pending-removal', '');
-    //             // element.parentNode?.appendChild(newelement);
-    //             element.parentNode?.insertBefore(newelement, element.nextSibling)
-    //             return newHref;
-    //         }
-    //         return '';
-    //     }
-    // }
-    //
-    // class ForceRefreshStrategy implements ReloadStrategy {
-    //     reload(msg: AssetChangeData) {
-    //         const file = msg.filename[0];
-    //         console.debug(logPrefix, logFmt, `Reloading the page, because ${file} changed`);
-    //         connectionClose(fakeEvent);
-    //         return document.location.reload();
-    //     }
-    // }
-    //
-    // class DoNothingStrategy implements ReloadStrategy {
-    //     reload(msg: AssetChangeData) {
-    //         console.error(logPrefix, logFmt, "Don't know how to process this", msg);
-    //     }
-    // }
-    //
-    // class PageStrategy extends ForceRefreshStrategy implements ReloadStrategy {
-    //     reload(msg: AssetChangeData) {
-    //         super.reload(msg);
-    //     }
-    // }
     var evtSource = null;
-    // const fakeEvent: Event = new Event('livreloadish.ignored');
     // https://caniuse.com/mdn-api_console_log_substitution_strings
     var logFmt = "color: #666666; padding: 1px 3px; border: 1px solid #bbbbbb; border-radius: 2px; font-size: 90%; display: inline-block";
     var logPrefix = "%clivereloadish";
@@ -156,7 +80,7 @@
             replaceCSSFile(linkElement, msg.new_time);
         }
     };
-    var reloadStrategy = function (msg) {
+    var refreshStrategy = function (msg) {
         var file = msg.filename[0];
         console.debug(logPage, logFmt, "Reloading the page, because " + file + " changed");
         livereloadishTeardown();
@@ -189,7 +113,7 @@
                 // an error page. The error page itself will have a SSE connection (hmmm)
                 // that will resolve and reload it if it's due to a template error etc.
                 console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");
-                reloadStrategy(msg);
+                return refreshStrategy(msg);
             });
         }
         else if (turbolinks && (turbolinks === null || turbolinks === void 0 ? void 0 : turbolinks.supported) && (turbolinks === null || turbolinks === void 0 ? void 0 : turbolinks.visit)) {
@@ -207,11 +131,11 @@
             }
             else {
                 console.debug(logPage, logFmt, "Cannot find the swup instance as 'window.swup' (possibly defined as a non global const/var");
-                reloadStrategy(msg);
+                return refreshStrategy(msg);
             }
         }
         else {
-            reloadStrategy(msg);
+            return refreshStrategy(msg);
         }
     };
     var jsStrategy = function (msg) {
@@ -230,7 +154,7 @@
                 // Now we have to reload, so we can stop immediately in case there were multiple
                 // replacements to deal with.
                 console.debug(logJS, logFmt, src + " is not reloadable");
-                return reloadStrategy(msg);
+                return refreshStrategy(msg);
             }
         }
     };
@@ -239,14 +163,14 @@
         "text/javascript": jsStrategy,
         "text/html": pageStrategy,
         "application/xhtml+xml": pageStrategy,
-        "image/png": reloadStrategy,
-        "image/jpeg": reloadStrategy,
-        "image/svg+xml": reloadStrategy,
-        "image/webp": reloadStrategy,
-        "image/gif": reloadStrategy,
-        "font/ttf": reloadStrategy,
-        "font/woff": reloadStrategy,
-        "font/woff2": reloadStrategy,
+        "image/png": refreshStrategy,
+        "image/jpeg": refreshStrategy,
+        "image/svg+xml": refreshStrategy,
+        "image/webp": refreshStrategy,
+        "image/gif": refreshStrategy,
+        "font/ttf": refreshStrategy,
+        "font/woff": refreshStrategy,
+        "font/woff2": refreshStrategy,
         "application/octet-stream": noopStrategy,
     };
     var queudeUpReloadStrategies = {
@@ -278,8 +202,8 @@
             }
             for (var key in queuedUp) {
                 var msg = queuedUp[key];
-                var reloadStrategy_1 = activeReloadStrategies[msg.asset_type];
-                reloadStrategy_1(msg);
+                var selectedReloadStrategy = activeReloadStrategies[msg.asset_type];
+                selectedReloadStrategy(msg);
                 delete queuedUp[key];
             }
         }
@@ -293,7 +217,7 @@
         }
         errorCount = 0;
     };
-    // Based on https://github.com/fanout/reconnecting-eventsource
+    // Based on https://github.com/fanout/reconnecting-eventsource ... ish.
     var connectionErrored = function (_event) {
         errorCount++;
         if (evtSource !== null) {
@@ -321,8 +245,8 @@
     };
     var assetHasChanged = function (event) {
         var msg = JSON.parse(event.data);
-        var reloadStrategy = activeReloadStrategies[msg.asset_type] || activeReloadStrategies["application/octet-stream"];
-        return reloadStrategy(msg);
+        var selectedReloadStrategy = activeReloadStrategies[msg.asset_type] || activeReloadStrategies["application/octet-stream"];
+        return selectedReloadStrategy(msg);
     };
     var promptedPreviously = [];
     var assetHasDeleted = function (event) {
@@ -335,7 +259,7 @@
         promptedPreviously.push(fileName);
         var confirmReload = window.confirm("File \"" + fileName + "\" has been moved or deleted, reload the page?");
         if (confirmReload) {
-            return reloadStrategy(msg);
+            return refreshStrategy(msg);
         }
         else {
             console.error(logPrefix, logFmt, fileName + " has been moved or deleted, page may need manually reloading");
