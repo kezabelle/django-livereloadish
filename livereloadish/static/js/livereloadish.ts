@@ -217,7 +217,7 @@
         } else {
             activeReloadStrategies = reloadStrategies;
             console.debug(logQueue, logFmt, "Switched reloaders back to defaults because page became visible");
-            if (evtSource === null) {
+            if (evtSource === null && Object.keys(queuedUp).length) {
                 console.debug(logQueue, logFmt, "It looks like the server may have gone away though, so these will probably fail...");
             }
             for (const key in queuedUp) {
