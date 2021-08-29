@@ -22,12 +22,13 @@ from livereloadish.patches import (
     do_patch_engine_find_template,
     do_patch_staticnode_url,
     do_patch_filesystemstorage_url,
+    do_patch_extendsnode_get_parent,
 )
 
 logger = logging.getLogger(__name__)
 
 Seen = namedtuple(
-    "Seen", ("relative_path", "absolute_path", "mtime", "needs_full_reload")
+    "Seen", ("relative_path", "absolute_path", "mtime", "requires_full_reload")
 )
 
 
@@ -84,6 +85,7 @@ class LiveReloadishConfig(AppConfig):
                 do_patch_engine_find_template(),
                 do_patch_filesystemstorage_url(),
                 do_patch_staticnode_url(),
+                do_patch_extendsnode_get_parent(),
                 self.load_from_lockfile(),
             )
         )

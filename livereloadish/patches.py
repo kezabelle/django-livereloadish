@@ -24,6 +24,7 @@ original_select_template = loader.select_template
 original_templateresponse_resolve_template = TemplateResponse.resolve_template
 original_engine_find_template = Engine.find_template
 original_staticnode_url = StaticNode.url
+original_extendsnode_get_parent = ExtendsNode.get_parent
 original_filesystemstorage_url = FileSystemStorage.url
 
 
@@ -326,6 +327,41 @@ def do_patch_staticnode_url() -> bool:
         logger.debug("Patching: django.templatetags.static.StaticNode.url")
         StaticNode.url = patched_staticnode_url
         StaticNode.livereloadish_patched = True
+        return True
+    return False
+
+
+def patched_extendsnode_get_parent(self: ExtendsNode, context: Context) -> Any:
+    template = original_extendsnode_get_parent(self, context)
+    if hasattr(template, "livereloadish_patched"):
+        try:
+            abspath = os.path.abspath(template.origin.name)
+        except AttributeError:
+            pass
+        else:
+            content_type, encoding = mimetypes.guess_type(abspath)
+            appconf = apps.get_app_config("livereloadish")
+            if content_type in appconf.seen and abspath in appconf.seen[content_type]:
+                existing_seen = appconf.seen[content_type][abspath]
+                logger.debug(
+                    "ExtendsNode.find_parent(%s) requires updating the seen list to requires_full_reload=True",
+                    abspath,
+                )
+                appconf.add_to_seen(
+                    content_type,
+                    existing_seen.relative_path,
+                    existing_seen.absolute_path,
+                    existing_seen.mtime,
+                    requires_full_reload=True,
+                )
+    return template
+
+
+def do_patch_extendsnode_get_parent() -> bool:
+    if not hasattr(ExtendsNode, "livereloadish_patched"):
+        logger.debug("Patching: django.template.loader_tags.ExtendsNode.get_parent")
+        ExtendsNode.get_parent = patched_extendsnode_get_parent
+        ExtendsNode.livereloadish_patched = True
         return True
     return False
 
