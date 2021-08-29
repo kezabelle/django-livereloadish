@@ -35,6 +35,7 @@ if ".map" not in mimetypes.suffix_map:
 def patched_serve(
     request: WSGIRequest, path: str, insecure=False, **kwargs
 ) -> FileResponse:
+    __traceback_hide__ = True
     response: FileResponse = original_serve(request, path, insecure=insecure, **kwargs)
     # Seen by another layer, skip work
     if hasattr(response, "livereloadish_patched"):
@@ -90,6 +91,7 @@ def do_patch_static_serve() -> bool:
 
 
 def patched_get_template(template_name: str, using=None):
+    __traceback_hide__ = True
     template = original_get_template(template_name, using=using)
     # Seen by another layer, skip work
     if hasattr(template, "livereloadish_patched"):
@@ -142,6 +144,7 @@ def do_patch_get_template() -> bool:
 
 
 def patched_select_template(template_name_list: Iterable[str], using=None):
+    __traceback_hide__ = True
     template = original_select_template(template_name_list, using=using)
     # Seen by another layer, skip work
     if hasattr(template, "livereloadish_patched"):
@@ -194,6 +197,7 @@ def do_patch_select_template() -> bool:
 
 
 def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
+    __traceback_hide__ = True
     template, origin = original_engine_find_template(self, name, dirs=dirs, skip=skip)
     # Seen by another layer, skip work
     if hasattr(template, "livereloadish_patched"):
@@ -246,6 +250,7 @@ def do_patch_engine_find_template() -> bool:
 
 
 def patched_templateresponse_resolve_template(self: TemplateResponse, template: Any):
+    __traceback_hide__ = True
     template = original_templateresponse_resolve_template(self, template)
     # Seen by another layer, skip work
     if hasattr(template, "livereloadish_patched"):
@@ -300,6 +305,7 @@ def do_patch_templateresponse_resolve_template() -> bool:
 
 
 def patched_staticnode_url(self: StaticNode, context: Context) -> str:
+    __traceback_hide__ = True
     url: str = original_staticnode_url(self, context)
     scheme, netloc, path, query, fragment = urlsplit(url)
     if scheme or netloc or "livereloadish=" in query:
@@ -332,6 +338,7 @@ def do_patch_staticnode_url() -> bool:
 
 
 def patched_extendsnode_get_parent(self: ExtendsNode, context: Context) -> Any:
+    __traceback_hide__ = True
     template = original_extendsnode_get_parent(self, context)
     if hasattr(template, "livereloadish_patched"):
         try:
@@ -367,6 +374,7 @@ def do_patch_extendsnode_get_parent() -> bool:
 
 
 def patched_filesystemstorage_url(self: FileSystemStorage, name: str) -> str:
+    __traceback_hide__ = True
     url: str = original_filesystemstorage_url(self, name)
     scheme, netloc, path, query, fragment = urlsplit(url)
     if scheme or netloc or "livereloadish=" in query:
