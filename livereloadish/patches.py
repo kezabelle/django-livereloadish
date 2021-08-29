@@ -12,6 +12,7 @@ from django.core.files.storage import FileSystemStorage
 from django.core.handlers.wsgi import WSGIRequest
 from django.http import FileResponse, QueryDict
 from django.template import loader, Engine, Context
+from django.template.loader_tags import ExtendsNode
 from django.template.response import TemplateResponse
 from django.templatetags.static import StaticNode
 from django.utils.cache import add_never_cache_headers
@@ -58,7 +59,15 @@ def patched_serve(
                     abspath,
                     mtime,
                 )
-                appconf.add_to_seen(content_type, request.path, abspath, mtime)
+                appconf.add_to_seen(
+                    content_type,
+                    request.path,
+                    abspath,
+                    mtime,
+                    # We don't KNOW whether it'll require a full page reload, it's
+                    # just a static file. Defer it to the JS/HTML to decide.
+                    requires_full_reload=False,
+                )
             else:
                 logger.debug(
                     "Skipping FileResponse(%s) due to content type %s being un-tracked",
@@ -106,6 +115,11 @@ def patched_get_template(template_name: str, using=None):
                 template.origin.template_name,
                 abspath,
                 os.path.getmtime(abspath),
+                # Support the notion of whether or not a template NEEDS a hard refresh
+                # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
+                # because then things added via {% include %} would also constitute
+                # a full reload...
+                requires_full_reload=False,
             )
         else:
             logger.debug(
@@ -153,6 +167,11 @@ def patched_select_template(template_name_list: Iterable[str], using=None):
                 template.origin.template_name,
                 abspath,
                 os.path.getmtime(abspath),
+                # Support the notion of whether or not a template NEEDS a hard refresh
+                # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
+                # because then things added via {% include %} would also constitute
+                # a full reload...
+                requires_full_reload=False,
             )
         else:
             logger.debug(
@@ -200,6 +219,11 @@ def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
                 origin.template_name,
                 abspath,
                 os.path.getmtime(abspath),
+                # Support the notion of whether or not a template NEEDS a hard refresh
+                # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
+                # because then things added via {% include %} would also constitute
+                # a full reload...
+                requires_full_reload=False,
             )
         else:
             logger.debug(
@@ -247,6 +271,11 @@ def patched_templateresponse_resolve_template(self: TemplateResponse, template: 
                 template.origin.template_name,
                 abspath,
                 os.path.getmtime(abspath),
+                # If the first element is {% "extends" %} we PROBABLY don't need to
+                # do a full page reload. But if it DOES, we do want to do one, because
+                # it may have changed stuff in <head> which isn't otherwise reflected
+                # in a partial reload by eg: unpoly/turbolinks etc.
+                requires_full_reload=False,
             )
         else:
             logger.debug(

@@ -2,6 +2,7 @@ import logging
 import os
 import pickle
 import time
+from collections import namedtuple
 from hashlib import sha1
 from tempfile import gettempdir
 from typing import Dict, NamedTuple, Literal
@@ -25,9 +26,8 @@ from livereloadish.patches import (
 
 logger = logging.getLogger(__name__)
 
-
-Seen = NamedTuple(
-    "Seen", [("relative_path", str), ("absolute_path", str), ("mtime", float)]
+Seen = namedtuple(
+    "Seen", ("relative_path", "absolute_path", "mtime", "needs_full_reload")
 )
 
 
@@ -89,10 +89,15 @@ class LiveReloadishConfig(AppConfig):
         )
 
     def add_to_seen(
-        self, content_type: str, relative_path: str, absolute_path: str, mtime: float
+        self,
+        content_type: str,
+        relative_path: str,
+        absolute_path: str,
+        mtime: float,
+        requires_full_reload: bool,
     ) -> Literal[True]:
         self.seen[content_type][absolute_path] = Seen(
-            relative_path, absolute_path, mtime
+            relative_path, absolute_path, mtime, requires_full_reload
         )
         return True
 
@@ -104,7 +109,10 @@ class LiveReloadishConfig(AppConfig):
         )
 
     def _should_be_enabled(self) -> bool:
-        return settings.DEBUG is True and os.environ.get(DJANGO_AUTORELOAD_ENV, "false") == "true"
+        return (
+            settings.DEBUG is True
+            and os.environ.get(DJANGO_AUTORELOAD_ENV, "false") == "true"
+        )
 
     def load_from_lockfile(self) -> bool:
         if not self._should_be_enabled():
@@ -125,6 +133,11 @@ class LiveReloadishConfig(AppConfig):
             except EOFError:
                 logger.warning(
                     "Livereloadish previously seen files cache is corrupt: %s",
+                    self.lockfile,
+                )
+            except TypeError:
+                logger.warning(
+                    "Livereloadish previously seen files cache contains out of date datastructures",
                     self.lockfile,
                 )
             else:
