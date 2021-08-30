@@ -487,8 +487,12 @@
         } else {
             activeReloadStrategies = reloadStrategies;
             console.debug(logQueue, logFmt, "Switched reloaders back to defaults because page became visible");
-            if (evtSource === null && Object.keys(queuedUp).length) {
-                console.debug(logQueue, logFmt, "It looks like the server may have gone away though, so these will probably fail...");
+            if (evtSource === null) {
+                if (errorCount >= maxErrors) {
+                    console.debug(logQueue, logFmt, "It looks like the server may have gone away for too long, so you'll probably need to refresh");
+                } else if (Object.keys(queuedUp).length) {
+                    console.debug(logQueue, logFmt, "It looks like the server may have gone away temporarily, so these may fail and you'll have to refresh");
+                }
             }
             // What happens if multiple trigger and want to do a full reload?
             // Will the queuedUp list have drained fully because unload has
@@ -504,6 +508,7 @@
 
     let errorTimer: null | number = null;
     let errorCount = 0;
+    const maxErrors = 10;
     /**
      * When a successful connection to the SSE URL has been established, reset
      * the error count and reconnection timers so that failures start anew later.
@@ -529,7 +534,7 @@
         if (evtSource !== null) {
             evtSource.close();
             evtSource = null;
-            if (errorCount < 10) {
+            if (errorCount < maxErrors) {
                 // Wait between 1-3 seconds before retrying.
                 const timeout = Math.max(1000, Math.round(3000 * Math.random()));
                 console.debug(logPrefix, logFmt, `Waiting for ${timeout}ms to restart SSE connection`);
