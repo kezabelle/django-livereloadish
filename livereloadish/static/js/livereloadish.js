@@ -6,26 +6,66 @@
     var logPrefix = "%clivereloadish";
     var logCSS = logPrefix + ": CSS";
     var logJS = logPrefix + ": JS";
+    var logIMG = logPrefix + ": Image";
     var logPage = logPrefix + ": Page";
     var logQueue = logPrefix + ": Queue";
-    var replaceCSSFile = function (link, mtime) {
+    var RelativeUrl = /** @class */ (function () {
+        function RelativeUrl(url, origin) {
+            this.address = new URL(url, origin);
+        }
+        RelativeUrl.prototype.toString = function () {
+            // Take off the origin (scheme://hostname:port/) if it's there ... it probably
+            // is because we're not using getAttribute, which gives us the raw valu rather
+            // than the one which has gone through the encoding and whatnot.
+            var newUrl = this.address.toString();
+            var startsWithOrigin = newUrl.indexOf(origin);
+            if (startsWithOrigin === 0) {
+                newUrl = newUrl.slice(origin.length);
+            }
+            return newUrl;
+        };
+        RelativeUrl.prototype.changeLivereloadishValue = function (mtime) {
+            var newUrl = new RelativeUrl(this.address.toString(), this.address.origin);
+            var searchParams = newUrl.address.searchParams;
+            searchParams.set("livereloadish", mtime.toString());
+            newUrl.address.search = searchParams.toString();
+            return newUrl;
+        };
+        return RelativeUrl;
+    }());
+    //
+    // const ensureFreshUrl = (url: string, mtime: number, origin: string): string => {
+    //     const fullUrl = new URL(url, origin);
+    //     const searchParams = fullUrl.searchParams;
+    //     searchParams.set("livereloadish", mtime.toString());
+    //     fullUrl.search = searchParams.toString();
+    //     let newUrl = fullUrl.toString();
+    //     // Take off the origin (scheme://hostname:port/) if it's there ... it probably
+    //     // is because we're not using getAttribute, which gives us the raw valu rather
+    //     // than the one which has gone through the encoding and whatnot.
+    //     const startsWithOrigin = newUrl.indexOf(origin);
+    //     if (startsWithOrigin === 0) {
+    //         newUrl = newUrl.slice(origin.length);
+    //     }
+    //     return newUrl;
+    // }
+    var replaceCSSFile = function (link, mtime, origin) {
         var _a;
         // Doing it this way, by creating a new link Node and deleting the old one
         // afterwards avoids the classic FOUC (flash-of-unstyled-content)
         // compared to just changing the URL, which depending on the browser (hi Firefox)
         // may unload the styles and repaint them.
-        // using .href causes Chrome, at least, to give you the _whole_ URL, scheme + hostname etc
-        // which could be problematic using *= instead of ^=
-        var originalHref = link.getAttribute('href');
-        if (originalHref !== null) {
+        var originalHref = new RelativeUrl(link.href, origin);
+        if (originalHref) {
             var newLink = document.createElement("link");
             for (var i = 0; i < link.attributes.length; i++) {
                 var _b = link.attributes[i], name_1 = _b.name, value = _b.value;
                 newLink.setAttribute(name_1, value);
             }
             // uuid regex: [0-9a-fA-F\-]{36}
-            var newHref_1 = originalHref.replace(/(&|\\?)livereloadish=([0-9]+.[0-9]+)/, "$1livereloadish=" + mtime);
-            newLink.setAttribute('href', newHref_1);
+            // const newHref = originalHref.replace(/(&|\\?)livereloadish=([0-9]+.[0-9]+)/, `$1livereloadish=${mtime}`);
+            var newHref_1 = originalHref.changeLivereloadishValue(mtime).toString();
+            newLink.href = newHref_1;
             var onComplete = function (_event) {
                 var _a;
                 console.debug(logCSS, logFmt, "Removing " + originalHref + " in favour of " + newHref_1);
@@ -39,21 +79,23 @@
             (_a = link.parentNode) === null || _a === void 0 ? void 0 : _a.insertBefore(newLink, link.nextSibling);
             return newHref_1;
         }
-        return '';
+        return "";
     };
-    var replaceJSFile = function (script, mtime) {
+    var replaceJSFile = function (script, mtime, origin) {
         var _a;
         // Like with CSS, we replace the element rather than adjust the src="..."
         // because that doesn't trigger re-running?
-        var originalHref = script.getAttribute('src');
-        if (originalHref !== null) {
+        var originalHref = new RelativeUrl(script.src, origin);
+        if (originalHref) {
             var newScript = document.createElement("script");
             for (var i = 0; i < script.attributes.length; i++) {
                 var _b = script.attributes[i], name_2 = _b.name, value = _b.value;
                 newScript.setAttribute(name_2, value);
             }
-            var newHref_2 = originalHref.replace(/(&|\\?)livereloadish=([0-9]+.[0-9]+)/, "$1livereloadish=" + mtime);
-            newScript.setAttribute('src', newHref_2);
+            // const newHref = originalHref.replace(/(&|\\?)livereloadish=([0-9]+.[0-9]+)/, `$1livereloadish=${mtime}`);
+            // const newHref = ensureFreshUrl(originalHref, mtime, origin);
+            var newHref_2 = originalHref.changeLivereloadishValue(mtime).toString();
+            newScript.src = newHref_2;
             newScript.defer = false;
             newScript.async = false;
             var onComplete = function (_event) {
@@ -71,13 +113,53 @@
         }
         return '';
     };
+    var replaceImageFile = function (img, mtime) {
+        // If used in a <picture> element, the <img src=""> will be wrong, but the
+        // actual <img> being displayed is using the currentSrc attr regardless.
+        // but currentSrc isn't available via getAttribute(...) and so returns the
+        // whole URL...hmmm.
+        // Unfortunately updating the .src on an <picture><source><img></picture>
+        // doesn't trigger a repaint in Firefox, but it does in Chrome?
+        var originalHref = new RelativeUrl(img.currentSrc, origin);
+        if (originalHref) {
+            // const newHref = originalHref.replace(/(&|\\?)livereloadish=([0-9]+.[0-9]+)/, `$1livereloadish=${mtime}`);
+            // const newHref = ensureFreshUrl(originalHref, mtime, origin);
+            var newHref = originalHref.changeLivereloadishValue(mtime).toString();
+            console.debug(logIMG, logFmt, "Replacing " + originalHref + " with " + newHref + " in-place");
+            img.setAttribute('src', newHref);
+            return newHref;
+        }
+        return "";
+    };
+    var replaceImageInStyle = function (element, mtime) {
+        var originalHref = element.style.backgroundImage;
+        if (originalHref) {
+            var urlExtractor = /url\((['"]{0,1})\s*(.*?)(["']{0,1})\)/g;
+            var newHref = originalHref.replace(urlExtractor, function (_fullText, leftQuote, actualHref, rightQuote, _matchStartPos, _inputValue) {
+                var _a;
+                var usingOrigin = origin;
+                // relative URLs inside CSS files need special construction,
+                // and changing the origin to the full path to the CSS file seems
+                // to fix it.
+                if (actualHref.indexOf("..") > -1 && "parentStyleSheet" in element && ((_a = element.parentStyleSheet) === null || _a === void 0 ? void 0 : _a.href)) {
+                    usingOrigin = element.parentStyleSheet.href;
+                }
+                var replacementUrl = new RelativeUrl(actualHref, usingOrigin).changeLivereloadishValue(mtime).toString();
+                return "url(" + leftQuote + replacementUrl + rightQuote + ")";
+            });
+            console.debug(logIMG, logFmt, "Replacing inline style " + originalHref + "\" with " + newHref + " in-place");
+            element.style.backgroundImage = newHref;
+            return newHref;
+        }
+        return '';
+    };
     var cssStrategy = function (msg) {
         var file = msg.filename[0];
         var reloadableLinkElements = document.querySelectorAll("link[rel=stylesheet][href*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([up-keep])");
         var linkElements = Array.prototype.slice.call(reloadableLinkElements);
         for (var _i = 0, linkElements_1 = linkElements; _i < linkElements_1.length; _i++) {
             var linkElement = linkElements_1[_i];
-            replaceCSSFile(linkElement, msg.new_time);
+            replaceCSSFile(linkElement, msg.new_time, origin);
         }
     };
     var refreshStrategy = function (msg) {
@@ -144,16 +226,17 @@
         }
     };
     var jsStrategy = function (msg) {
+        var origin = document.location.origin;
         var file = msg.filename[0];
         var possiblyReloadableScriptElements = document.querySelectorAll("script[src*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([data-turbolinks-eval=\"false\"]):not([up-keep])");
         var scriptElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
         for (var _i = 0, scriptElements_1 = scriptElements; _i < scriptElements_1.length; _i++) {
             var scriptElement = scriptElements_1[_i];
             var reloadable = scriptElement.dataset.reloadable;
-            var src = scriptElement.getAttribute('src');
+            var src = scriptElement.src;
             if (reloadable === "" || reloadable === "true") {
                 console.debug(logJS, logFmt, src + " is marked as reloadable");
-                replaceJSFile(scriptElement, msg.new_time);
+                replaceJSFile(scriptElement, msg.new_time, origin);
             }
             else {
                 // Now we have to reload, so we can stop immediately in case there were multiple
@@ -163,16 +246,75 @@
             }
         }
     };
+    var imageStrategy = function (msg) {
+        // TODO: https://github.com/livereload/livereload-js/blob/12cff7df9dcb36a14c00c5c092fef86efd201910/src/reloader.js#L238
+        // Ideally handle <img> <picture>, stylesheet url(...) images, probably favicons etc...
+        var origin = document.location.origin;
+        var file = msg.filename[0];
+        var possiblyReloadableScriptElements = document.images;
+        var imageElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
+        var totalReplacements = [];
+        for (var _i = 0, imageElements_1 = imageElements; _i < imageElements_1.length; _i++) {
+            var imageElement = imageElements_1[_i];
+            if (imageElement.currentSrc.indexOf(file) > -1) {
+                if (imageElement.src.indexOf(file) === -1) {
+                    console.debug(logIMG, logFmt, "Currently using a separate img (via responsive srcset=\"...\" or picture element) ... replacement may not work everywhere (Hi Firefox!)");
+                }
+                var newHref = replaceImageFile(imageElement, msg.new_time, origin);
+                if (newHref !== "") {
+                    totalReplacements.push(newHref);
+                }
+            }
+        }
+        // Can't say I care about border images, so we'll only look for backgrounds...
+        // Note that we could see items from document.images in here, because they could
+        // have placeholder backgrounds...
+        var inlineStyles = document.querySelectorAll("[style*=\"background\"][style*=\"" + file + "\"]");
+        var imageStyleElements = Array.prototype.slice.call(inlineStyles);
+        for (var _a = 0, imageStyleElements_1 = imageStyleElements; _a < imageStyleElements_1.length; _a++) {
+            var imageElement = imageStyleElements_1[_a];
+            if (imageElement.style.backgroundImage) {
+                var newHref = replaceImageInStyle(imageElement, msg.new_time, origin);
+                if (newHref !== "") {
+                    totalReplacements.push(newHref);
+                }
+            }
+        }
+        var styleSheets = Array.prototype.slice.call(document.styleSheets);
+        for (var _b = 0, styleSheets_1 = styleSheets; _b < styleSheets_1.length; _b++) {
+            var styleSheet = styleSheets_1[_b];
+            var rules = void 0;
+            try {
+                rules = Array.prototype.slice.call(styleSheet.cssRules);
+            }
+            catch (e) {
+                console.warn(logIMG, logFmt, "Failed to read get CSSRuleList from " + styleSheet.href + ", probably it's remote and uneditable?");
+                continue;
+            }
+            for (var _c = 0, rules_1 = rules; _c < rules_1.length; _c++) {
+                var rule = rules_1[_c];
+                if (rule.cssText.indexOf("background") > -1) {
+                    var newHref = replaceImageInStyle(rule, msg.new_time, origin);
+                    if (newHref !== "") {
+                        totalReplacements.push(newHref);
+                    }
+                }
+            }
+        }
+        if (totalReplacements.length === 0) {
+            console.debug(logIMG, logFmt, "Failed to find any images or CSS styles referencing " + file);
+        }
+    };
     var reloadStrategies = {
         "text/css": cssStrategy,
         "text/javascript": jsStrategy,
         "text/html": pageStrategy,
         "application/xhtml+xml": pageStrategy,
-        "image/png": refreshStrategy,
-        "image/jpeg": refreshStrategy,
-        "image/svg+xml": refreshStrategy,
-        "image/webp": refreshStrategy,
-        "image/gif": refreshStrategy,
+        "image/png": imageStrategy,
+        "image/jpeg": imageStrategy,
+        "image/svg+xml": imageStrategy,
+        "image/webp": imageStrategy,
+        "image/gif": imageStrategy,
         "font/ttf": refreshStrategy,
         "font/woff": refreshStrategy,
         "font/woff2": refreshStrategy,
@@ -205,6 +347,9 @@
             if (evtSource === null && Object.keys(queuedUp).length) {
                 console.debug(logQueue, logFmt, "It looks like the server may have gone away though, so these will probably fail...");
             }
+            // What happens if multiple trigger and want to do a full reload?
+            // Will the queuedUp list have drained fully because unload has
+            // fired and livereloadishTeardown deleted them? Not sure...
             for (var key in queuedUp) {
                 var msg = queuedUp[key];
                 var selectedReloadStrategy = activeReloadStrategies[msg.asset_type];
@@ -294,9 +439,7 @@
         }
     };
     var livereloadishTeardown = function () {
-        // Don't know that I can remove ... myself.
-        // window.removeEventListener('pagehide', unload);
-        document.removeEventListener('visibilitychange', switchStrategies);
+        // destroy these values ASAP
         if (errorTimer !== null) {
             clearTimeout(errorTimer);
         }
@@ -304,6 +447,9 @@
         for (var key in queuedUp) {
             delete queuedUp[key];
         }
+        // Don't know that I can remove ... myself.
+        // window.removeEventListener('pagehide', unload);
+        document.removeEventListener('visibilitychange', switchStrategies);
         if (evtSource !== null) {
             evtSource.close();
             console.debug(logPrefix, logFmt, "SSE connection closed, not reconnecting");
