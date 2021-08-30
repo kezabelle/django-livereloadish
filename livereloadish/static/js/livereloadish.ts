@@ -82,8 +82,8 @@
         // afterwards avoids the classic FOUC (flash-of-unstyled-content)
         // compared to just changing the URL, which depending on the browser (hi Firefox)
         // may unload the styles and repaint them.
-        const originalHref = new RelativeUrl(link.href, origin);
-        if (originalHref) {
+        if (link.href) {
+            const originalHref = new RelativeUrl(link.href, origin);
             const newLink = document.createElement("link");
             for (let i = 0; i < link.attributes.length; i++) {
                 const {name, value} = link.attributes[i];
@@ -111,8 +111,8 @@
     const replaceJSFile: Replacement<HTMLScriptElement> = function (script, mtime: number, origin: string): string {
         // Like with CSS, we replace the element rather than adjust the src="..."
         // because that doesn't trigger re-running?
-        const originalHref = new RelativeUrl(script.src, origin);
-        if (originalHref) {
+        if (script.src) {
+            const originalHref = new RelativeUrl(script.src, origin);
             const newScript = document.createElement("script");
             for (let i = 0; i < script.attributes.length; i++) {
                 const {name, value} = script.attributes[i];
@@ -139,21 +139,38 @@
         return '';
     };
 
-    const replaceImageFile: Replacement<HTMLImageElement> = function (img, mtime: number): string {
-        // If used in a <picture> element, the <img src=""> will be wrong, but the
-        // actual <img> being displayed is using the currentSrc attr regardless.
-        // but currentSrc isn't available via getAttribute(...) and so returns the
-        // whole URL...hmmm.
-        // Unfortunately updating the .src on an <picture><source><img></picture>
-        // doesn't trigger a repaint in Firefox, but it does in Chrome?
-        let originalHref = new RelativeUrl(img.currentSrc, origin);
-        if (originalHref) {
-            // const newHref = originalHref.replace(/(&|\\?)livereloadish=([0-9]+.[0-9]+)/, `$1livereloadish=${mtime}`);
-            // const newHref = ensureFreshUrl(originalHref, mtime, origin);
+    const replaceImageFile: Replacement<HTMLImageElement|HTMLSourceElement> = function (img, mtime: number): string {
+        // If an <img> or <picture><source> has a srcset, we want to refresh both the
+        // src attr AND the srcset attr, because Chrome and Safari will update the
+        // currentSrc being used for the responsive <img> when the src changes, but
+        // Firefox doesn't. Instead you have to update the srcset, which appears
+        // to trigger the reflow.
+        // Note that this is currently refreshing ALL the images in a given responsive
+        // image, regardless of if they represent the recently changed path, because
+        // this function doesn't receive the path (it's checked by the caller), only
+        // the modification time to update to.
+        if (img.src) {
+            const originalHref = new RelativeUrl(img.src, origin);
             const newHref = originalHref.changeLivereloadishValue(mtime).toString();
-            console.debug(logIMG, logFmt, `Replacing ${originalHref} with ${newHref} in-place`);
+            console.debug(logIMG, logFmt, `Replacing src ${originalHref} with ${newHref} in-place`);
             img.setAttribute('src', newHref);
             return newHref;
+        }
+        if (img.srcset) {
+            // https://github.com/sindresorhus/srcset/blob/9549e25ca7919a08f2fb519e84784658e4009c9a/index.js#L18
+            const urlExtractor = /\s*([^,]\S*[^,](?:\s+[^,]+)?)\s*(?:,|$)/g;
+            img.srcset = img.srcset.replace(urlExtractor, function(_fullText, candidateHref: string, _matchStartPos: number, _input: string): string {
+                const candidateParts = candidateHref.split(/\s+/);
+                if (candidateParts.length > 2) {
+                    console.error(logIMG, logFmt, `Expected "/path/to/file.ext 000w" format, got more spaces than that. Leaving as-is.`)
+                    return candidateHref;
+                } else {
+                    const [actualHref, descriptor] = candidateParts;
+                    const replacementUrl = new RelativeUrl(actualHref, origin).changeLivereloadishValue(mtime).toString();
+                    console.debug(logIMG, logFmt, `Replacing srcset ${actualHref} with ${replacementUrl} in-place`);
+                    return `${replacementUrl} ${descriptor}`;
+                }
+            });
         }
         return "";
     }
@@ -161,7 +178,7 @@
         const originalHref = element.style.backgroundImage;
         if (originalHref) {
             const urlExtractor = /url\((['"]{0,1})\s*(.*?)(["']{0,1})\)/g;
-            const newHref = originalHref.replace(urlExtractor, function(_fullText, leftQuote, actualHref, rightQuote, _matchStartPos, _inputValue) {
+            const newHref = originalHref.replace(urlExtractor, function(_fullText, leftQuote: string, actualHref: string, rightQuote: string, _matchStartPos: number, _inputValue: string): string {
                 let usingOrigin = origin;
                 // relative URLs inside CSS files need special construction,
                 // and changing the origin to the full path to the CSS file seems
@@ -272,19 +289,14 @@
         // Ideally handle <img> <picture>, stylesheet url(...) images, probably favicons etc...
         const origin = document.location.origin;
         const file = msg.filename[0];
-        const possiblyReloadableScriptElements = document.images;
-        const imageElements: HTMLImageElement[] = Array.prototype.slice.call(possiblyReloadableScriptElements);
+        const possiblyReloadableScriptElements = document.querySelectorAll(`img[src*="${file}"], img[srcset*="${file}"], picture>source[srcset*="${file}"]`);
+        const imageElements: (HTMLImageElement|HTMLSourceElement)[] = Array.prototype.slice.call(possiblyReloadableScriptElements);
         const totalReplacements: string[] = [];
         for (const imageElement of imageElements) {
-            if (imageElement.currentSrc.indexOf(file) > -1) {
-                if (imageElement.src.indexOf(file) === -1) {
-                    console.debug(logIMG, logFmt, `Currently using a separate img (via responsive srcset="..." or picture element) ... replacement may not work everywhere (Hi Firefox!)`);
-                }
                 const newHref = replaceImageFile(imageElement, msg.new_time, origin);
                 if (newHref !== "") {
                     totalReplacements.push(newHref);
                 }
-            }
         }
         // Can't say I care about border images, so we'll only look for backgrounds...
         // Note that we could see items from document.images in here, because they could
@@ -309,11 +321,13 @@
                 continue;
             }
             for (const rule of rules) {
+                if (rule instanceof CSSStyleRule) {
                 if (rule.cssText.indexOf("background") > -1) {
-                    const newHref = replaceImageInStyle(rule as CSSStyleRule, msg.new_time, origin);
+                    const newHref = replaceImageInStyle(rule, msg.new_time, origin);
                     if (newHref !== "") {
                         totalReplacements.push(newHref);
                     }
+                }
                 }
             }
         }
