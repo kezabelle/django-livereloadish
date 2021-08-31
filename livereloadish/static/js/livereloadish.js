@@ -1,5 +1,136 @@
 "use strict";
 (function () {
+    // What follows immediately below is a copy of udomdiff 1.1.0, but adjusted
+    // to remove it's own IIFE + exports, and just bind straight to the udomdiff
+    // variable, and change the arguments to satisfy TS better.
+    // I've inlined it so there's only 1 request for livereloadish client side stuff.
+    // See the license below for attribution to Andrea Giammarchi (https://github.com/WebReflection)
+    // See https://github.com/WebReflection/udomdiff for the repository itself. It's a cool library.
+    /**
+     * ISC License
+     *
+     * Copyright (c) 2020, Andrea Giammarchi, @WebReflection
+     *
+     * Permission to use, copy, modify, and/or distribute this software for any
+     * purpose with or without fee is hereby granted, provided that the above
+     * copyright notice and this permission notice appear in all copies.
+     *
+     * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+     * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+     * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+     * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+     * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+     * OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+     * PERFORMANCE OF THIS SOFTWARE.
+     */
+    var udomdiff = (function (parentNode, a, b, get, before) {
+        var bLength = b.length;
+        var aEnd = a.length;
+        var bEnd = bLength;
+        var aStart = 0;
+        var bStart = 0;
+        var map = null;
+        while (aStart < aEnd || bStart < bEnd) {
+            // append head, tail, or nodes in between: fast path
+            if (aEnd === aStart) {
+                // we could be in a situation where the rest of nodes that
+                // need to be added are not at the end, and in such case
+                // the node to `insertBefore`, if the index is more than 0
+                // must be retrieved, otherwise it's gonna be the first item.
+                var node = bEnd < bLength ? bStart ? get(b[bStart - 1], -0).nextSibling : get(b[bEnd - bStart], 0) : before;
+                while (bStart < bEnd) {
+                    parentNode.insertBefore(get(b[bStart++], 1), node);
+                }
+            } // remove head or tail: fast path
+            else if (bEnd === bStart) {
+                while (aStart < aEnd) {
+                    // remove the node only if it's unknown or not live
+                    if (!map || !map.has(a[aStart]))
+                        parentNode.removeChild(get(a[aStart], -1));
+                    aStart++;
+                }
+            } // same node: fast path
+            else if (a[aStart] === b[bStart]) {
+                aStart++;
+                bStart++;
+            } // same tail: fast path
+            else if (a[aEnd - 1] === b[bEnd - 1]) {
+                aEnd--;
+                bEnd--;
+            } // The once here single last swap "fast path" has been removed in v1.1.0
+            // https://github.com/WebReflection/udomdiff/blob/single-final-swap/esm/index.js#L69-L85
+            // reverse swap: also fast path
+            else if (a[aStart] === b[bEnd - 1] && b[bStart] === a[aEnd - 1]) {
+                // this is a "shrink" operation that could happen in these cases:
+                // [1, 2, 3, 4, 5]
+                // [1, 4, 3, 2, 5]
+                // or asymmetric too
+                // [1, 2, 3, 4, 5]
+                // [1, 2, 3, 5, 6, 4]
+                var _node = get(a[--aEnd], -1).nextSibling;
+                parentNode.insertBefore(get(b[bStart++], 1), get(a[aStart++], -1).nextSibling);
+                parentNode.insertBefore(get(b[--bEnd], 1), _node); // mark the future index as identical (yeah, it's dirty, but cheap 👍)
+                // The main reason to do this, is that when a[aEnd] will be reached,
+                // the loop will likely be on the fast path, as identical to b[bEnd].
+                // In the best case scenario, the next loop will skip the tail,
+                // but in the worst one, this node will be considered as already
+                // processed, bailing out pretty quickly from the map index check
+                a[aEnd] = b[bEnd];
+            } // map based fallback, "slow" path
+            else {
+                // the map requires an O(bEnd - bStart) operation once
+                // to store all future nodes indexes for later purposes.
+                // In the worst case scenario, this is a full O(N) cost,
+                // and such scenario happens at least when all nodes are different,
+                // but also if both first and last items of the lists are different
+                if (!map) {
+                    map = new Map();
+                    var i = bStart;
+                    while (i < bEnd) {
+                        map.set(b[i], i++);
+                    }
+                } // if it's a future node, hence it needs some handling
+                if (map.has(a[aStart])) {
+                    // grab the index of such node, 'cause it might have been processed
+                    var index = map.get(a[aStart]); // if it's not already processed, look on demand for the next LCS
+                    if (bStart < index && index < bEnd) {
+                        var _i = aStart; // counts the amount of nodes that are the same in the future
+                        var sequence = 1;
+                        while (++_i < aEnd && _i < bEnd && map.get(a[_i]) === index + sequence) {
+                            sequence++;
+                        } // effort decision here: if the sequence is longer than replaces
+                        // needed to reach such sequence, which would brings again this loop
+                        // to the fast path, prepend the difference before a sequence,
+                        // and move only the future list index forward, so that aStart
+                        // and bStart will be aligned again, hence on the fast path.
+                        // An example considering aStart and bStart are both 0:
+                        // a: [1, 2, 3, 4]
+                        // b: [7, 1, 2, 3, 6]
+                        // this would place 7 before 1 and, from that time on, 1, 2, and 3
+                        // will be processed at zero cost
+                        if (sequence > index - bStart) {
+                            var _node2 = get(a[aStart], 0);
+                            while (bStart < index) {
+                                parentNode.insertBefore(get(b[bStart++], 1), _node2);
+                            }
+                        } // if the effort wasn't good enough, fallback to a replace,
+                        // moving both source and target indexes forward, hoping that some
+                        // similar node will be found later on, to go back to the fast path
+                        else {
+                            parentNode.replaceChild(get(b[bStart++], 1), get(a[aStart++], -1));
+                        }
+                    } // otherwise move the source forward, 'cause there's nothing to do
+                    else
+                        aStart++;
+                } // this node has no meaning in the future list, so it's more than safe
+                // to remove it, and check the next live node out instead, meaning
+                // that only the live list index should be forwarded
+                else
+                    parentNode.removeChild(get(a[aStart++], -1));
+            }
+        }
+        return b;
+    });
     var evtSource = null;
     // https://caniuse.com/mdn-api_console_log_substitution_strings
     var logFmt = "color: #666666; padding: 1px 3px; border: 1px solid #bbbbbb; border-radius: 2px; font-size: 90%; display: inline-block";
@@ -201,8 +332,8 @@
         }
         var reloadableLinkElements = document.querySelectorAll("link[rel=stylesheet][href*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([up-keep])");
         var linkElements = Array.prototype.slice.call(reloadableLinkElements);
-        for (var _i = 0, linkElements_1 = linkElements; _i < linkElements_1.length; _i++) {
-            var linkElement = linkElements_1[_i];
+        for (var _a = 0, linkElements_1 = linkElements; _a < linkElements_1.length; _a++) {
+            var linkElement = linkElements_1[_a];
             replaceCSSFile(linkElement, msg.new_time, origin);
         }
     };
@@ -298,7 +429,30 @@
             }
         }
         else {
-            return refreshStrategy(msg);
+            var fetchResponse = window.fetch(url.toString(), {
+                'mode': 'same-origin',
+                'credentials': 'same-origin',
+                'cache': 'reload',
+                'redirect': 'error',
+            });
+            fetchResponse.then(function (response) {
+                if (!response.ok) {
+                    throw new TypeError("Stop due to " + response.status + " (" + response.statusText + ")");
+                }
+                return response.text();
+            }).then(function (body) {
+                console.debug(logPage, logFmt, "Reloading the body content via udomdiff, because " + file + " changed");
+                var fragment = new DOMParser().parseFromString(body, 'text/html');
+                var fragmentSaysReload = fragment.querySelector("meta[name='livereloadish-page-strategy'][content='reload']");
+                if (fragmentSaysReload) {
+                    console.debug(logPage, logFmt, "Meta tag on the incoming page suggested that this must be a full reload, because " + file + " changed");
+                    return refreshStrategy(msg);
+                }
+                udomdiff(document.body, Array.prototype.slice.call(document.body.children), Array.prototype.slice.call(fragment.body.children), function (o) { return o; }, null);
+            }).catch(function (_err) {
+                console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");
+                return refreshStrategy(msg);
+            });
         }
     };
     /**
@@ -322,8 +476,8 @@
         }
         var possiblyReloadableScriptElements = document.querySelectorAll("script[src*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([data-turbolinks-eval=\"false\"]):not([up-keep])");
         var scriptElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
-        for (var _i = 0, scriptElements_1 = scriptElements; _i < scriptElements_1.length; _i++) {
-            var scriptElement = scriptElements_1[_i];
+        for (var _a = 0, scriptElements_1 = scriptElements; _a < scriptElements_1.length; _a++) {
+            var scriptElement = scriptElements_1[_a];
             var reloadable = scriptElement.dataset.reloadable;
             var src = scriptElement.src;
             if (reloadable === "" || reloadable === "true") {
@@ -354,11 +508,11 @@
             console.debug(logIMG, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
-        var possiblyReloadableScriptElements = document.querySelectorAll("img[src*=\"" + file + "\"], img[srcset*=\"" + file + "\"], picture>source[srcset*=\"" + file + "\"]");
+        var possiblyReloadableScriptElements = document.querySelectorAll("img[src*=\"" + file + "\"], img[srcset*=\"" + file + "\"], picture > source[srcset*=\"" + file + "\"]");
         var imageElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
         var totalReplacements = [];
-        for (var _i = 0, imageElements_1 = imageElements; _i < imageElements_1.length; _i++) {
-            var imageElement = imageElements_1[_i];
+        for (var _a = 0, imageElements_1 = imageElements; _a < imageElements_1.length; _a++) {
+            var imageElement = imageElements_1[_a];
             var newHref = replaceImageFile(imageElement, msg.new_time, origin);
             if (newHref !== "") {
                 totalReplacements.push(newHref);
@@ -369,8 +523,8 @@
         // have placeholder backgrounds...
         var inlineStyles = document.querySelectorAll("[style*=\"background\"][style*=\"" + file + "\"]");
         var imageStyleElements = Array.prototype.slice.call(inlineStyles);
-        for (var _a = 0, imageStyleElements_1 = imageStyleElements; _a < imageStyleElements_1.length; _a++) {
-            var imageElement = imageStyleElements_1[_a];
+        for (var _b = 0, imageStyleElements_1 = imageStyleElements; _b < imageStyleElements_1.length; _b++) {
+            var imageElement = imageStyleElements_1[_b];
             if (imageElement.style.backgroundImage) {
                 var newHref = replaceImageInStyle(imageElement, msg.new_time, origin);
                 if (newHref !== "") {
@@ -379,8 +533,8 @@
             }
         }
         var styleSheets = Array.prototype.slice.call(document.styleSheets);
-        for (var _b = 0, styleSheets_1 = styleSheets; _b < styleSheets_1.length; _b++) {
-            var styleSheet = styleSheets_1[_b];
+        for (var _c = 0, styleSheets_1 = styleSheets; _c < styleSheets_1.length; _c++) {
+            var styleSheet = styleSheets_1[_c];
             var rules = void 0;
             try {
                 rules = Array.prototype.slice.call(styleSheet.cssRules);
@@ -389,8 +543,8 @@
                 console.warn(logIMG, logFmt, "Failed to read get CSSRuleList from " + styleSheet.href + ", probably it's remote and uneditable?");
                 continue;
             }
-            for (var _c = 0, rules_1 = rules; _c < rules_1.length; _c++) {
-                var rule = rules_1[_c];
+            for (var _d = 0, rules_1 = rules; _d < rules_1.length; _d++) {
+                var rule = rules_1[_d];
                 // Obnoxiously, the .type attribute seems to be deprecated
                 // https://developer.mozilla.org/en-US/docs/Web/API/CSSRule/type
                 // but I don't see any replacement for it? How else do I know
