@@ -371,7 +371,11 @@
             }
             for (var _c = 0, rules_1 = rules; _c < rules_1.length; _c++) {
                 var rule = rules_1[_c];
-                if (rule instanceof CSSStyleRule) {
+                // Obnoxiously, the .type attribute seems to be deprecated
+                // https://developer.mozilla.org/en-US/docs/Web/API/CSSRule/type
+                // but I don't see any replacement for it? How else do I know
+                // if it's technically an instanceof CSSStyleRule
+                if (rule.type == rule.STYLE_RULE) {
                     if (rule.cssText.indexOf("background") > -1) {
                         var newHref = replaceImageInStyle(rule, msg.new_time, origin);
                         if (newHref !== "") {
@@ -445,13 +449,17 @@
         else {
             activeReloadStrategies = reloadStrategies;
             console.debug(logQueue, logFmt, "Switched reloaders back to defaults because page became visible");
+            var replayCount = Object.keys(queuedUp).length;
             if (evtSource === null) {
                 if (errorCount >= maxErrors) {
                     console.debug(logQueue, logFmt, "It looks like the server may have gone away for too long, so you'll probably need to refresh");
                 }
-                else if (Object.keys(queuedUp).length) {
+                else if (replayCount > 0) {
                     console.debug(logQueue, logFmt, "It looks like the server may have gone away temporarily, so these may fail and you'll have to refresh");
                 }
+            }
+            else if (replayCount > 0) {
+                console.debug(logQueue, logFmt, "There are a total of " + replayCount + " changes to apply");
             }
             // What happens if multiple trigger and want to do a full reload?
             // Will the queuedUp list have drained fully because unload has
