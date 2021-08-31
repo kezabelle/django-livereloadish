@@ -114,6 +114,34 @@ following configuration without issue so far::
 
 most of which is probably redundant and fall back to the default src anyway.
 
+Marking files as reloadable, or not
+-----------------------------------
+
+CSS and JS files will only be considered if they do **not** have one of the following HTML attributes:
+
+- ``<link|script data-no-reload>``
+- ``<link|script up-keep>``
+
+If a CSS file does not have one of those attributes, it will be transparently reloaded, **without** a full page refresh.
+
+JS files will also not be considered if they have:
+
+- ``<script data-turbolinks-eval="false"></script>``
+
+By default, the JS reload strategy is to **do** a full page refresh because JS often has state
+or setup/teardown for eventhandlers etc. To allow a script to be reloaded in-place **without**
+a full page refresh, you may mark it as either:
+
+- ``<script data-reloadable></script>``
+- ``<script data-reloadable="true"></script>``
+
+which will tell the reloader it is either idempotent, or will sort out any unbinding/rebinding
+when it's loaded.
+
+Images are **always** reloaded in-place currently. HTML is reloaded in-place if it's not a
+*root* template **and** I can detect you're using something like unpoly or turbolinks. Otherwise
+it'll be a full page refresh currently.
+
 Status
 ------
 
