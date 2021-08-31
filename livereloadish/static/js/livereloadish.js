@@ -194,6 +194,11 @@
      */
     var cssStrategy = function (msg) {
         var file = msg.filename[0];
+        var documentSaysReload = document.querySelector("meta[name='livereloadish-css-strategy'][content='reload']");
+        if (documentSaysReload) {
+            console.debug(logCSS, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
+            return refreshStrategy(msg);
+        }
         var reloadableLinkElements = document.querySelectorAll("link[rel=stylesheet][href*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([up-keep])");
         var linkElements = Array.prototype.slice.call(reloadableLinkElements);
         for (var _i = 0, linkElements_1 = linkElements; _i < linkElements_1.length; _i++) {
@@ -256,6 +261,11 @@
             console.debug(logPage, logFmt, "Server suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
+        var documentSaysReload = document.querySelector("meta[name='livereloadish-page-strategy'][content='reload']");
+        if (documentSaysReload) {
+            console.debug(logPage, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
+            return refreshStrategy(msg);
+        }
         // @ts-ignore
         var unpoly = window.up, turbolinks = window.Turbolinks, Swup = window.Swup, swupInstance = window.swup, url = window.location;
         if (unpoly && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.version) && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.reload)) {
@@ -305,6 +315,11 @@
     var jsStrategy = function (msg) {
         var origin = document.location.origin;
         var file = msg.filename[0];
+        var documentSaysReload = document.querySelector("meta[name='livereloadish-js-strategy'][content='reload']");
+        if (documentSaysReload) {
+            console.debug(logJS, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
+            return refreshStrategy(msg);
+        }
         var possiblyReloadableScriptElements = document.querySelectorAll("script[src*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([data-turbolinks-eval=\"false\"]):not([up-keep])");
         var scriptElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
         for (var _i = 0, scriptElements_1 = scriptElements; _i < scriptElements_1.length; _i++) {
@@ -334,6 +349,11 @@
         // https://github.com/livereload/livereload-js/blob/12cff7df9dcb36a14c00c5c092fef86efd201910/src/reloader.js#L238
         var origin = document.location.origin;
         var file = msg.filename[0];
+        var documentSaysReload = document.querySelector("meta[name='livereloadish-image-strategy'][content='reload']");
+        if (documentSaysReload) {
+            console.debug(logIMG, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
+            return refreshStrategy(msg);
+        }
         var possiblyReloadableScriptElements = document.querySelectorAll("img[src*=\"" + file + "\"], img[srcset*=\"" + file + "\"], picture>source[srcset*=\"" + file + "\"]");
         var imageElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
         var totalReplacements = [];

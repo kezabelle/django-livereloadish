@@ -142,6 +142,20 @@ Images are **always** reloaded in-place currently. HTML is reloaded in-place if 
 *root* template **and** I can detect you're using something like unpoly or turbolinks. Otherwise
 it'll be a full page refresh currently.
 
+Always reloading certain file types, regardless
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+It is possible to **always** do a full page refesh, regardless of any of the data
+attributes above or hooks I've put in place, by adding the following meta tags as appropriate:
+
+- ``<meta name="livereloadish-page-strategy" content="reload">`` will make all **HTML** changes do a full refresh;
+- ``<meta name="livereloadish-css-strategy" content="reload">`` will make all **CSS** changes do a full refresh rather than the default in-place replacement;
+- ``<meta name="livereloadish-js-strategy" content="reload">`` will make all **JS** changes do full refresh, ignoring any of the ``data-reloadable`` declarations etc;
+- ``<meta name="livereloadish-image-strategy" content="reload">`` will make all **image** changes do a full refresh rather than the default in-place replacements
+
+These take absolute precedence over any defaults, or attributes defined on any relevant elements.
+These meta tags are the first thing checked when a file is changed, and everything else is subsequently ignored if they're found (ie: it's a short-circuit operation).
+
 Status
 ------
 
