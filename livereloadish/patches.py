@@ -15,7 +15,8 @@ from django.template import loader, Engine, Context
 from django.template.loader_tags import ExtendsNode
 from django.template.response import TemplateResponse
 from django.templatetags.static import StaticNode
-from django.utils.cache import add_never_cache_headers
+from django.utils.cache import add_never_cache_headers, patch_cache_control
+from django.utils.http import parse_http_date, http_date
 
 logger = logging.getLogger(__name__)
 original_serve = views.serve
@@ -40,6 +41,7 @@ def patched_serve(
     # Seen by another layer, skip work
     if hasattr(response, "livereloadish_patched"):
         return response
+    mtime = 0.0
     if isinstance(response, FileResponse):
         content_type, sep, params = response.headers.get(
             "Content-Type", "application/octet-stream; fallback"
@@ -77,7 +79,38 @@ def patched_serve(
                     content_type,
                 )
     response.livereloadish_patched = True
-    add_never_cache_headers(response)
+    request_mtime = request.GET.get("livereloadish", None)
+    if not request_mtime:
+        # Can't know for sure if it's cacheable, bust it.
+        add_never_cache_headers(response)
+    try:
+        request_mtime = float(request_mtime)
+    except (TypeError, ValueError):
+        # Someone fiddled the livereloadish=xxx var, forcibly uncache it.
+        add_never_cache_headers(response)
+    else:
+        # Find the newest of
+        # A) the request parameter,
+        # B) the just-stat'd tracked file
+        # C) the last-modified from the stat call in the view (probably the
+        # same as B but with less precision)
+        # And of those, set the cache header.
+        fileresponse_mtime = 0.0
+        if "Last-Modified" in response.headers:
+            fileresponse_mtime = float(
+                parse_http_date(response.headers["Last-Modified"])
+            )
+        mtimes = (request_mtime, mtime, fileresponse_mtime)
+        newest_mtime = max(mtimes)
+        response.headers["Last-Modified"] = http_date(newest_mtime)
+        logger.debug(
+            "Setting file's last modified header to %s because %s was the newest of %s",
+            response.headers["Last-Modified"],
+            newest_mtime,
+            mtimes,
+        )
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control#requiring_revalidation
+        patch_cache_control(response, no_cache=True, must_revalidate=True, max_age=0)
     return response
 
 
