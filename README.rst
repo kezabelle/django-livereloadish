@@ -59,11 +59,34 @@ In theory, that's it. Assuming you're using standard things like class based vie
 
 For any requests you make which return an HTML response, you should have some JavaScript
 injected into the end to set the `SSE`_ watcher up, and then you should be free to change
-your CSS/HTML/Images etc as you like. If you see a line like the following your ``runserver`` output::
+your CSS/HTML/Images etc as you like.
+
+Logging
+-------
+
+If you make sure your ``LOGGING`` contains something like::
+
+    LOGGING={
+        ...
+        "loggers": {
+            ...
+            "livereloadish": {
+                "handlers": ["console"],
+                "level": "INFO",
+                "propagate": False,
+            },
+            ...
+        },
+        ...
+    }
+
+that is, you have ``livereloadish`` key with a level, echoing to your console, you'll
+get informational messages about the server part. I recommend using ``INFO`` as the level,
+(rather than ``DEBUG`` which is spammy) which will give you ``runserver`` output like::
 
     [8c88030f] Livereloadish SSE client connected, starting
 
-then things have gone well. When a file is changed you should see something like::
+when things have gone well. When a file is changed you should see something like::
 
     [8c88030f] Livereloadish change detected in /static/css/base.css
 
@@ -74,9 +97,8 @@ When you close the tab, or do a full page refresh/navigate to another page, you'
 
 to indicate the request finally closed.
 
-It outputs a bunch of information to your browser's devtools console at the **debug** level, if you
-want to check on it. It also outputs a bunch of logging to your python logs, if you add
-``livereloadish`` to your ``LOGGING['loggers']`` again with a level of **debug**.
+Regardless of your ``LOGGING`` config, the client-side JS outputs a bunch of information
+to your browser's devtools console at the **debug** level, if you want to check on it.
 
 Content-Security-Policy
 -----------------------
