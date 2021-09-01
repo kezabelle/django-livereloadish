@@ -5,7 +5,7 @@ import os
 import socket
 import sys
 import time
-from typing import Any, Union, Generator
+from typing import Any, Union
 from uuid import UUID
 
 from django.apps import apps
@@ -20,6 +20,7 @@ from django.http import (
     Http404,
     FileResponse,
 )
+from django.template.response import TemplateResponse
 from django.views import static, View
 
 from livereloadish import LiveReloadishConfig
@@ -316,16 +317,30 @@ class SSEView(View):
 sse = SSEView.as_view()
 
 
-def stats(request: WSGIRequest) -> Union[JsonResponse, HttpResponseNotAllowed]:
+def stats(
+    request: WSGIRequest,
+) -> Union[TemplateResponse, JsonResponse, HttpResponseNotAllowed]:
     if request.method not in {"GET"}:
         return HttpResponseNotAllowed({"GET"})
     if not settings.DEBUG:
         raise Http404("Only available when DEBUG=True")
     tracked_files = apps.get_app_config("livereloadish").seen
-    return JsonResponse(
-        data=tracked_files,
-        json_dumps_params={"indent": 4},
+    if "json" in request.GET:
+        return JsonResponse(
+            data=tracked_files,
+            json_dumps_params={"indent": 4},
+        )
+    response = TemplateResponse(
+        request=request,
+        template="livereloadish/stats.html",
+        context={
+            "data": tracked_files,
+        },
     )
+    response[
+        "Content-Security-Policy"
+    ] = "default-src 'self'; img-src 'none'; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none';"
+    return response
 
 
 @atexit.register

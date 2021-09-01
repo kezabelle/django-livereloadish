@@ -3,6 +3,7 @@ import os
 import pickle
 import time
 from collections import namedtuple
+from datetime import datetime, timezone
 from hashlib import sha1
 from tempfile import gettempdir
 from typing import Dict, NamedTuple, Literal
@@ -13,6 +14,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
 from django.utils.autoreload import DJANGO_AUTORELOAD_ENV
 from django.utils.functional import cached_property
+from django.utils.http import http_date
 
 from livereloadish.patches import (
     do_patch_static_serve,
@@ -27,9 +29,14 @@ from livereloadish.patches import (
 
 logger = logging.getLogger(__name__)
 
-Seen = namedtuple(
-    "Seen", ("relative_path", "absolute_path", "mtime", "requires_full_reload")
-)
+
+class Seen(
+    namedtuple(
+        "Seen", ("relative_path", "absolute_path", "mtime", "requires_full_reload")
+    )
+):
+    def mtime_as_utc_date(self):
+        return datetime.fromtimestamp(self.mtime, timezone.utc)
 
 
 class LiveReloadishConfig(AppConfig):
