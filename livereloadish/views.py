@@ -73,20 +73,25 @@ def sse(
         raise Http404("Only available when DEBUG=True")
     appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")
     try:
-        req_uuid = str(UUID(request.GET["livereloadish"]))
+        req_uuid = str(UUID(request.GET["uuid"]))
         short_req_uuid, _ignored, _ignored = req_uuid.partition("-")
     except (ValueError, KeyError) as e:
         raise PermissionDenied("Missing livereloadish UUID") from e
+    try:
+        last_scan = float(request.GET["page_load"])
+    except (TypeError, ValueError, KeyError) as e:
+        last_scan = time.time()
 
     def x(reqid: str) -> Generator:
+        nonlocal last_scan
         increment = appconf.sleep_quick
         spent = 0.0
         logger.info(
-            "[%s] Livereloadish SSE client connected, starting",
+            "[%s] Livereloadish SSE client connected at %s, starting",
             reqid,
+            last_scan,
             extra={"request": request},
         )
-        last_scan = time.time()
         yield f'id: {reqid},{last_scan}\nevent: connect\ndata: {{"msg": "starting file watcher"}}\n\n'
 
         socket_is_open = True

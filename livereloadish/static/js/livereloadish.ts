@@ -804,7 +804,8 @@
         if (includer !== null) {
             const livereloadishUrl = includer.dataset.livereloadishUrl;
             if (livereloadishUrl) {
-                evtSource = new EventSource(livereloadishUrl);
+                const jsLoad = new Date().getTime() / 1000;
+                evtSource = new EventSource(livereloadishUrl.replace('js_load=0', `js_load=${jsLoad}`));
                 evtSource.addEventListener('open', connectionOpened);
                 evtSource.addEventListener('error', connectionErrored);
                 evtSource.addEventListener('assets_change', assetHasChanged);

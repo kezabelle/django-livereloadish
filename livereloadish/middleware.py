@@ -1,4 +1,5 @@
 import logging
+import time
 from collections import namedtuple
 from typing import Any
 from uuid import uuid4
@@ -20,12 +21,13 @@ class NamedUrlconf(namedtuple("NamedUrl", "included_patterns")):
 
 
 class LivereloadishMiddleware:
+    __slots__ = ("get_response", "process_load")
     prefix = "livereloadish"
     content_types = ("text/html", "application/xhtml+xml")
     # SSE insertion. Happens at the end of the </head> but don't worry it's marked
     # as async & defer, so it'll not block page load.
     insert_js_before = "</head>"
-    insert_js_content = f'<script data-livereloadish-id="{{uuid}}" type="text/javascript" data-livereloadish-url="/{prefix}/watch/?livereloadish={{uuid}}" src="/{{prefix}}/watcher/livereloadish.js" defer async data-turbolinks="false" data-turbolinks-eval="false"></script>\n</head>'
+    insert_js_content = f'<script type="text/javascript" data-livereloadish-url="/{prefix}/watch/?uuid={{uuid}}&process_load={{process_load}}&page_load={{page_load}}&js_load=0" src="/{{prefix}}/watcher/livereloadish.js" defer async data-turbolinks="false" data-turbolinks-eval="false"></script>\n</head>'
     # When an error page (technical_404, technical_500) is shown, we want to
     # force a full page reload if they connect to the SSE, so that styles etc get
     # re-applied where they might not otherwise (eg: if I end up doing a udomdiff
@@ -43,6 +45,7 @@ class LivereloadishMiddleware:
         if not settings.DEBUG:
             raise MiddlewareNotUsed("Livereloadish is only available if DEBUG=True")
         self.get_response = get_response
+        self.process_load = time.time()
 
     def __call__(self, request: WSGIRequest) -> HttpResponseBase:
         if request.path[0:15] == f"/{self.prefix}/" and settings.DEBUG:
@@ -97,7 +100,12 @@ class LivereloadishMiddleware:
             logger.debug("Livereloadish is being mounted for path %s", request.path)
             response.content = content.replace(
                 self.insert_js_before,
-                self.insert_js_content.format(prefix=self.prefix, uuid=uuid4()),
+                self.insert_js_content.format(
+                    prefix=self.prefix,
+                    uuid=uuid4(),
+                    process_load=self.process_load,
+                    page_load=time.time(),
+                ),
             )
             if "Content-Length" in response.headers:
                 response["Content-Length"] = len(response.content)
