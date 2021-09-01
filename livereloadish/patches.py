@@ -1,25 +1,28 @@
 import logging
 import mimetypes
 import os
+import posixpath
 import time
-from typing import Iterable, Any
+from typing import Iterable, Any, Union
 from urllib.parse import urlsplit, urlunsplit
 
 from django.apps import apps
 from django.conf import settings
-from django.contrib.staticfiles import views, finders
+from django.contrib.staticfiles import finders
 from django.core.files.storage import FileSystemStorage
 from django.core.handlers.wsgi import WSGIRequest
-from django.http import FileResponse, QueryDict
+from django.http import FileResponse, QueryDict, HttpResponseNotModified
 from django.template import loader, Engine, Context
 from django.template.loader_tags import ExtendsNode
 from django.template.response import TemplateResponse
 from django.templatetags.static import StaticNode
+from django.utils._os import safe_join
 from django.utils.cache import add_never_cache_headers, patch_cache_control
 from django.utils.http import parse_http_date, http_date
+from django.views import static
 
 logger = logging.getLogger(__name__)
-original_serve = views.serve
+original_serve = static.serve
 original_get_template = loader.get_template
 original_select_template = loader.select_template
 original_templateresponse_resolve_template = TemplateResponse.resolve_template
@@ -34,50 +37,70 @@ if ".map" not in mimetypes.suffix_map:
 
 
 def patched_serve(
-    request: WSGIRequest, path: str, insecure=False, **kwargs
-) -> FileResponse:
+    request: WSGIRequest,
+    path: str,
+    document_root=None,
+    show_indexes=False,
+) -> Union[FileResponse, HttpResponseNotModified]:
     __traceback_hide__ = True
-    response: FileResponse = original_serve(request, path, insecure=insecure, **kwargs)
+    response: Union[FileResponse, HttpResponseNotModified] = original_serve(
+        request, path, document_root, show_indexes
+    )
     # Seen by another layer, skip work
     if hasattr(response, "livereloadish_patched"):
         return response
-    mtime = 0.0
-    if isinstance(response, FileResponse):
+
+    # If the client sent If-Modified-Since and it checked out, we won't have
+    # the file content, but still need to track the request as if we did,
+    # otherwise files may be missed between autoreloads.
+    if isinstance(response, HttpResponseNotModified):
+        path = posixpath.normpath(path).lstrip("/")
+        abspath = safe_join(document_root, path)
+        content_type, encoding = mimetypes.guess_type(abspath)
+        logger.debug(
+            "Resolving HttpResponseNotModified for %s, still intending to track",
+            abspath,
+            extra={"request": request},
+        )
+    else:
         content_type, sep, params = response.headers.get(
             "Content-Type", "application/octet-stream; fallback"
         ).partition(";")
         try:
             abspath = os.path.abspath(response.file_to_stream.name)
-        except AttributeError:
-            pass
-        else:
-            appconf = apps.get_app_config("livereloadish")
-            if content_type in appconf.seen:
-                # if "Last-Modified" in response.headers:
-                #     mtime = float(parse_http_date(response.headers["Last-Modified"]))
-                #     msg = "Adding FileResponse(%s) to tracked assets using Last-Modified header: %s"
-                # else:
-                mtime = os.path.getmtime(abspath)
-                logger.debug(
-                    "Adding FileResponse(%s) to tracked assets using stat syscall: %s",
-                    abspath,
-                    mtime,
-                )
-                appconf.add_to_seen(
-                    content_type,
-                    request.path,
-                    abspath,
-                    mtime,
-                    # We don't KNOW whether it'll require a full page reload, it's
-                    # just a static file. Defer it to the JS/HTML to decide.
-                    requires_full_reload=False,
-                )
-            else:
-                logger.debug(
-                    "Skipping FileResponse(%s) due to content type %s being un-tracked",
-                    abspath,
-                    content_type,
-                )
+        except AttributeError as e:
+            logger.exception(
+                "Failed to get the FileResponse's file path for %s",
+                path,
+                exc_info=e,
+                extra={"request": request},
+            )
+            return response
+
+    mtime = 0.0
+    appconf = apps.get_app_config("livereloadish")
+    if content_type in appconf.seen:
+        mtime = os.path.getmtime(abspath)
+        logger.debug(
+            "Adding FileResponse(%s) to tracked assets using stat syscall: %s",
+            abspath,
+            mtime,
+        )
+        appconf.add_to_seen(
+            content_type,
+            request.path,
+            abspath,
+            mtime,
+            # We don't KNOW whether it'll require a full page reload, it's
+            # just a static file. Defer it to the JS/HTML to decide.
+            requires_full_reload=False,
+        )
+    else:
+        logger.debug(
+            "Skipping FileResponse(%s) due to content type %s being un-tracked",
+            abspath,
+            content_type,
+        )
     response.livereloadish_patched = True
     request_mtime = request.GET.get("livereloadish", None)
     if not request_mtime:
@@ -104,7 +127,8 @@ def patched_serve(
         newest_mtime = max(mtimes)
         response.headers["Last-Modified"] = http_date(newest_mtime)
         logger.debug(
-            "Setting file's last modified header to %s because %s was the newest of %s",
+            "Setting %s last modified header to %s because %s was the newest of %s",
+            request.path,
             response.headers["Last-Modified"],
             newest_mtime,
             mtimes,
@@ -115,10 +139,12 @@ def patched_serve(
 
 
 def do_patch_static_serve() -> bool:
-    if not hasattr(views.serve, "livereloadish_patched"):
-        logger.debug("Patching: django.contrib.staticfiles.views.serve")
-        views.serve = patched_serve
-        views.serve.livereloadish_patched = True
+    if not hasattr(static.serve, "livereloadish_patched"):
+        logger.debug(
+            "Patching: django.views.static.serve (used by django.contrib.staticfiles.views.serve)"
+        )
+        static.serve = patched_serve
+        static.serve.livereloadish_patched = True
         return True
     return False
 
