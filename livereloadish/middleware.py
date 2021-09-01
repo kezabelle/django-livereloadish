@@ -70,7 +70,6 @@ class LivereloadishMiddleware:
             logger.debug(
                 "Livereloadish not being mounted for path %s",
                 request.path,
-                response.status_code,
             )
             return response
         content = response.content.decode(response.charset)
