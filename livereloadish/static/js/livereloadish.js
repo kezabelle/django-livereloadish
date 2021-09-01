@@ -575,6 +575,7 @@
     var reloadStrategies = {
         "text/css": cssStrategy,
         "text/javascript": jsStrategy,
+        "application/javascript": jsStrategy,
         "text/html": pageStrategy,
         "application/xhtml+xml": pageStrategy,
         "image/png": imageStrategy,
@@ -595,6 +596,7 @@
     var queudeUpReloadStrategies = {
         "text/css": queuedUpStrategy,
         "text/javascript": queuedUpStrategy,
+        "application/javascript": queuedUpStrategy,
         "text/html": queuedUpStrategy,
         "application/xhtml+xml": queuedUpStrategy,
         "image/png": queuedUpStrategy,

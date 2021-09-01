@@ -68,6 +68,7 @@ class LiveReloadishConfig(AppConfig):
         "text/html": {},
         "application/xhtml+xml": {},
         "text/javascript": {},
+        "application/javascript": {},
         "image/png": {},
         "image/jpeg": {},
         "image/svg+xml": {},

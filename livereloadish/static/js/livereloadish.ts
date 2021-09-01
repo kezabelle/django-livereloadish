@@ -150,6 +150,7 @@
     type MimeType =
         "text/css" |
         "text/javascript" |
+        "application/javascript" |
         "text/html" |
         "application/xhtml+xml" |
         "image/png" |
@@ -633,6 +634,7 @@
     const reloadStrategies: { [key in MimeType]: ReloadStrategy } = {
         "text/css": cssStrategy,
         "text/javascript": jsStrategy,
+        "application/javascript": jsStrategy,
         "text/html": pageStrategy,
         "application/xhtml+xml": pageStrategy,
         "image/png": imageStrategy,
@@ -653,6 +655,7 @@
     const queudeUpReloadStrategies: { [key in MimeType]: ReloadStrategy } = {
         "text/css": queuedUpStrategy,
         "text/javascript": queuedUpStrategy,
+        "application/javascript": queuedUpStrategy,
         "text/html": queuedUpStrategy,
         "application/xhtml+xml": queuedUpStrategy,
         "image/png": queuedUpStrategy,
