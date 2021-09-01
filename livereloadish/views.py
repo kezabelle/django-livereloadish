@@ -73,8 +73,14 @@ class SSEView(View):
             short_req_uuid, _ignored, _ignored = req_uuid.partition("-")
         except (ValueError, KeyError) as e:
             raise PermissionDenied("Missing livereloadish UUID") from e
+        # I'm using js_load instead of page_load because the latter doesn't
+        # change if you close a tab and then re-summon it from the dead.
+        # But the JS does re-fire to create an EventSource, complete with
+        # a new epoch value.
+        # Thus if you re-summon it and then quickly change something, it should
+        # get notified.
         try:
-            last_scan = float(request.GET["page_load"])
+            last_scan = float(request.GET["js_load"])
         except (TypeError, ValueError, KeyError):
             last_scan = time.time()
         return StreamingHttpResponse(
@@ -146,9 +152,6 @@ class SSEView(View):
             socket_handler = server_handler.request_handler.connection
 
         while socket_is_open:
-            # Sleep initially, because on the first connection it's probably on
-            # page load and nothing will have changed in that small amount of time.
-            time.sleep(increment)
             # Test whether the client has hung up, apparently.
             # https://stackoverflow.com/a/62277798 and
             # https://stackoverflow.com/a/7589126 combined yo...
@@ -301,6 +304,13 @@ class SSEView(View):
                 increment,
                 extra={"request": request},
             )
+            # Sleep at the end, because on the first iteration it's probably on
+            # page load and there may have been something to change since
+            # page_load/js_load were set. Basically a race condition where I'm
+            # saving & alt-tabbing quickly after refreshing and I don't want to
+            # miss a change and then assume it's got stuck and refresh manually again.
+            # Sort of defeats the point of livereload if I don't have faith in it working.
+            time.sleep(increment)
 
 
 sse = SSEView.as_view()
