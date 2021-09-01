@@ -20,7 +20,7 @@ from django.http import (
     Http404,
     FileResponse,
 )
-from django.views import static
+from django.views import static, View
 
 from livereloadish import LiveReloadishConfig
 
@@ -64,26 +64,30 @@ def js(
     )
 
 
-def sse(
-    request: WSGIRequest,
-) -> Union[StreamingHttpResponse, HttpResponseNotAllowed]:
-    if request.method not in {"GET"}:
-        return HttpResponseNotAllowed({"GET"})
-    if not settings.DEBUG:
-        raise Http404("Only available when DEBUG=True")
-    appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")
-    try:
-        req_uuid = str(UUID(request.GET["uuid"]))
-        short_req_uuid, _ignored, _ignored = req_uuid.partition("-")
-    except (ValueError, KeyError) as e:
-        raise PermissionDenied("Missing livereloadish UUID") from e
-    try:
-        last_scan = float(request.GET["page_load"])
-    except (TypeError, ValueError, KeyError) as e:
-        last_scan = time.time()
+class SSEView(View):
+    def get(self, request):
+        if not settings.DEBUG:
+            raise Http404("Only available when DEBUG=True")
+        try:
+            req_uuid = str(UUID(request.GET["uuid"]))
+            short_req_uuid, _ignored, _ignored = req_uuid.partition("-")
+        except (ValueError, KeyError) as e:
+            raise PermissionDenied("Missing livereloadish UUID") from e
+        try:
+            last_scan = float(request.GET["page_load"])
+        except (TypeError, ValueError, KeyError):
+            last_scan = time.time()
+        return StreamingHttpResponse(
+            streaming_content=self.loop(
+                request=request,
+                reqid=short_req_uuid,
+                last_scan=last_scan,
+                appconf=apps.get_app_config("livereloadish"),
+            ),
+            content_type="text/event-stream",
+        )
 
-    def x(reqid: str) -> Generator:
-        nonlocal last_scan
+    def loop(self, request, reqid: str, last_scan: float, appconf: LiveReloadishConfig):
         increment = appconf.sleep_quick
         spent = 0.0
         logger.info(
@@ -297,10 +301,8 @@ def sse(
                 extra={"request": request},
             )
 
-    return StreamingHttpResponse(
-        streaming_content=x(short_req_uuid),
-        content_type="text/event-stream",
-    )
+
+sse = SSEView.as_view()
 
 
 def stats(request: WSGIRequest) -> Union[JsonResponse, HttpResponseNotAllowed]:
