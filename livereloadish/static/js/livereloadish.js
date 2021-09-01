@@ -449,6 +449,10 @@
                     return refreshStrategy(msg);
                 }
                 udomdiff(document.body, Array.prototype.slice.call(document.body.children), Array.prototype.slice.call(fragment.body.children), function (o) { return o; }, null);
+                if (fragment.title != document.title) {
+                    console.debug(logPage, logFmt, "Updated the document title, because " + file + " changed");
+                    document.title = fragment.title;
+                }
             }).catch(function (_err) {
                 console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");
                 return refreshStrategy(msg);
