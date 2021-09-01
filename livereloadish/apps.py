@@ -131,11 +131,14 @@ class LiveReloadishConfig(AppConfig):
         if not self.lockfile_storage.exists(self.lockfile):
             logger.debug("Livereloadish has no previously seen file cache")
             return False
-        last_modified = os.path.getmtime(self.lockfile_storage.path(self.lockfile))
+        lockfile_path = self.lockfile_storage.path(self.lockfile)
+        last_modified = os.path.getmtime(lockfile_path)
         # If it's there but older than we'd like, assume a refresh is needed
         # to collect files to watch.
         if last_modified < (time.time() - self.stale_after):
-            logger.info("Livereloadish has a stale cache of seen files")
+            logger.info(
+                "Livereloadish has a stale cache of seen files: %s", lockfile_path
+            )
             return False
         with self.lockfile_storage.open(self.lockfile) as f:
             try:
@@ -143,19 +146,19 @@ class LiveReloadishConfig(AppConfig):
             except EOFError:
                 logger.warning(
                     "Livereloadish previously seen files cache is corrupt: %s",
-                    self.lockfile,
+                    lockfile_path,
                 )
             except TypeError:
                 logger.warning(
-                    "Livereloadish previously seen files cache contains out of date datastructures",
-                    self.lockfile,
+                    "Livereloadish previously seen files cache contains out of date datastructures: %s",
+                    lockfile_path,
                 )
             else:
                 file_count = sum(len(values) for values in self.seen.values())
                 logger.debug(
                     "Livereloadish %s previously seen files are being tracked from cache (< 15 minutes old): %s",
                     file_count,
-                    self.lockfile,
+                    lockfile_path,
                 )
             return True
 
@@ -167,7 +170,7 @@ class LiveReloadishConfig(AppConfig):
         logger.debug(
             "Livereloadish dumping %s previously seen files to cache: %s",
             file_count,
-            self.lockfile,
+            self.lockfile_storage.path(self.lockfile),
         )
         self.lockfile_storage.delete(self.lockfile)
         self.lockfile_storage.save(self.lockfile, ContentFile(pickle.dumps(self.seen)))
