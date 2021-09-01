@@ -84,7 +84,7 @@ that is, you have ``livereloadish`` key with a level, echoing to your console, y
 get informational messages about the server part. I recommend using ``INFO`` as the level,
 (rather than ``DEBUG`` which is spammy) which will give you ``runserver`` output like::
 
-    [8c88030f] Livereloadish SSE client connected, starting
+    [8c88030f] Livereloadish SSE client connected at XXXXXX.XXX, starting
 
 when things have gone well. When a file is changed you should see something like::
 
@@ -93,7 +93,7 @@ when things have gone well. When a file is changed you should see something like
 at which point the client side JS should attempt to resolve & refresh that automatically.
 When you close the tab, or do a full page refresh/navigate to another page, you'll see::
 
-    [8c88030f] Livereloadish client disappeared, cancelling
+    [8c88030f] Livereloadish client disconnected after XXXXXX.XXX, cancelling
 
 to indicate the request finally closed.
 

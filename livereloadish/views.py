@@ -181,8 +181,9 @@ class SSEView(View):
 
             if not socket_is_open:
                 logger.info(
-                    "[%s] Livereloadish client disappeared, cancelling",
+                    "[%s] Livereloadish client disconnected after %s, cancelling",
                     reqid,
+                    last_scan,
                     extra={"request": request},
                 )
                 break
