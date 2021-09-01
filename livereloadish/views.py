@@ -57,6 +57,10 @@ def js(
         raise Http404("Only available when DEBUG=True")
     if extension not in {"ts", "d.ts", "js", "js.map"}:
         raise Http404("Invalid file specified")
+    try:
+        apps.get_app_config("livereloadish")
+    except LookupError:
+        raise Http404("Only available when the livereloadish app is in INSTALLED_APPS")
     return static.serve(
         request,
         path=f"js/livereloadish.{extension}",
@@ -84,12 +88,18 @@ class SSEView(View):
             last_scan = float(request.GET["js_load"])
         except (TypeError, ValueError, KeyError):
             last_scan = time.time()
+        try:
+            appconf = apps.get_app_config("livereloadish")
+        except LookupError:
+            raise Http404(
+                "Only available when the livereloadish app is in INSTALLED_APPS"
+            )
         return StreamingHttpResponse(
             streaming_content=self.loop(
                 request=request,
                 reqid=short_req_uuid,
                 last_scan=last_scan,
-                appconf=apps.get_app_config("livereloadish"),
+                appconf=appconf,
             ),
             content_type="text/event-stream",
         )
@@ -324,7 +334,10 @@ def stats(
         return HttpResponseNotAllowed({"GET"})
     if not settings.DEBUG:
         raise Http404("Only available when DEBUG=True")
-    tracked_files = apps.get_app_config("livereloadish").seen
+    try:
+        tracked_files = apps.get_app_config("livereloadish").seen
+    except LookupError:
+        raise Http404("Only available when the livereloadish app is in INSTALLED_APPS")
     if "json" in request.GET:
         return JsonResponse(
             data=tracked_files,
@@ -345,7 +358,10 @@ def stats(
 
 @atexit.register
 def tidyup() -> None:
-    appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")
+    try:
+        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")
+    except LookupError:
+        return
     if appconf._should_be_enabled():
         try:
             appconf.dump_to_lockfile()
