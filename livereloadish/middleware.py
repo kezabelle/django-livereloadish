@@ -23,7 +23,7 @@ class NamedUrlconf(namedtuple("NamedUrl", "included_patterns")):
 
 
 class LivereloadishMiddleware:
-    __slots__ = ("get_response", "process_load")
+    __slots__ = ("get_response", "process_load", "appconf")
     prefix = "livereloadish"
     content_types = ("text/html", "application/xhtml+xml")
     # SSE insertion. Happens at the end of the </head> but don't worry it's marked
@@ -48,6 +48,10 @@ class LivereloadishMiddleware:
     def __init__(self, get_response: Any) -> None:
         if not settings.DEBUG:
             raise MiddlewareNotUsed("Livereloadish is only available if DEBUG=True")
+        try:
+            self.appconf = apps.get_app_config("livereloadish")
+        except LookupError:
+            raise MiddlewareNotUsed("Livereloadish is in the INSTALLED_APPS")
         self.get_response = get_response
         self.process_load = time.time()
 
@@ -57,10 +61,9 @@ class LivereloadishMiddleware:
                 path(f"{self.prefix}/", include(livereloadish_urlpatterns))
             )
             return self.get_response(request)
-        appconf = apps.get_app_config("livereloadish")
-        appconf.during_request.templates = {}
+        self.appconf.during_request.templates = {}
         response = self.get_response(request)
-        templates = appconf.during_request.templates
+        templates = self.appconf.during_request.templates
         return self.insert_html(request, response, templates)
 
     def insert_html(

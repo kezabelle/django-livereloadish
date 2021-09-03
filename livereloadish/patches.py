@@ -389,10 +389,12 @@ def do_patch_filesystemstorage_url() -> bool:
 def listen_for_python_changes(sender, file_path, **kwargs):
     abspath = str(file_path)
     content_type, encoding = mimetypes.guess_type(abspath)
+    if content_type not in {"text/x-python", "application/x-python-code"}:
+        return None
     try:
         appconf = apps.get_app_config("livereloadish")
     except LookupError:
-        return
+        return None
 
     if content_type in appconf.seen:
         logger.debug(
