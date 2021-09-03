@@ -3,7 +3,7 @@ import mimetypes
 import os
 import posixpath
 import time
-from typing import Iterable, Any, Union
+from typing import Any, Union
 from urllib.parse import urlsplit, urlunsplit
 
 from django.apps import apps
@@ -12,9 +12,8 @@ from django.contrib.staticfiles import finders
 from django.core.files.storage import FileSystemStorage
 from django.core.handlers.wsgi import WSGIRequest
 from django.http import FileResponse, QueryDict, HttpResponseNotModified
-from django.template import loader, Engine, Context
+from django.template import Engine, Context, Template
 from django.template.loader_tags import ExtendsNode
-from django.template.response import TemplateResponse
 from django.templatetags.static import StaticNode
 from django.utils._os import safe_join
 from django.utils.cache import add_never_cache_headers, patch_cache_control
@@ -23,9 +22,7 @@ from django.views import static
 
 logger = logging.getLogger(__name__)
 original_serve = static.serve
-original_get_template = loader.get_template
-original_select_template = loader.select_template
-original_templateresponse_resolve_template = TemplateResponse.resolve_template
+original_template_render = Template._render
 original_engine_find_template = Engine.find_template
 original_staticnode_url = StaticNode.url
 original_extendsnode_get_parent = ExtendsNode.get_parent
@@ -47,7 +44,7 @@ def patched_serve(
         request, path, document_root, show_indexes
     )
     # Seen by another layer, skip work
-    if hasattr(response, "livereloadish_patched"):
+    if hasattr(response, "livereloadish_seen"):
         return response
 
     # If the client sent If-Modified-Since and it checked out, we won't have
@@ -101,7 +98,7 @@ def patched_serve(
             abspath,
             content_type,
         )
-    response.livereloadish_patched = True
+    response.livereloadish_seen = True
     request_mtime = request.GET.get("livereloadish", None)
     if not request_mtime:
         # Can't know for sure if it's cacheable, bust it.
@@ -139,131 +136,106 @@ def patched_serve(
 
 
 def do_patch_static_serve() -> bool:
-    if not hasattr(static.serve, "livereloadish_patched"):
+    if not hasattr(static.serve, "livereloadish_seen"):
         logger.debug(
             "Patching: django.views.static.serve (used by django.contrib.staticfiles.views.serve)"
         )
         static.serve = patched_serve
-        static.serve.livereloadish_patched = True
+        static.serve.livereloadish_seen = True
         return True
     return False
 
 
-def patched_get_template(template_name: str, using=None):
-    __traceback_hide__ = True
-    template = original_get_template(template_name, using=using)
-    # Seen by another layer, skip work
-    if hasattr(template, "livereloadish_patched"):
-        return template
-    # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
-    if hasattr(template, "template") and hasattr(
-        template.template, "livereloadish_patched"
-    ):
-        return template
+def patched_template_render(self: Template, context) -> str:
     try:
-        abspath = os.path.abspath(template.origin.name)
-    except AttributeError:
-        pass
-    else:
-        content_type, encoding = mimetypes.guess_type(abspath)
         appconf = apps.get_app_config("livereloadish")
-        if content_type in appconf.seen:
+    except LookupError:
+        return original_template_render(self, context)
+    else:
+        output = original_template_render(self, context)
+        try:
+            seen_templates = appconf.during_request.templates
+        except AttributeError:
+            # We're outside of the request/response cycle, or haven't got the middleware
             logger.debug(
-                "Adding get_template(%s) to tracked assets using stat syscall",
-                abspath,
-            )
-            appconf.add_to_seen(
-                content_type,
-                template.origin.template_name,
-                abspath,
-                os.path.getmtime(abspath),
-                # Support the notion of whether or not a template NEEDS a hard refresh
-                # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
-                # because then things added via {% include %} would also constitute
-                # a full reload...
-                requires_full_reload=False,
+                "Ignoring Template._render(%s) for seen-during-request",
+                self.origin.name,
             )
         else:
-            logger.debug(
-                "Skipping get_template(%s) due to content type %s being un-tracked",
-                abspath,
-                content_type,
-            )
-    template.livereloadish_patched = True
-    return template
+            if self.origin.template_name:
+                # We've seen this template, let's try and mark it as related to a
+                # given request...
+                # Note that at this point it should have an actual path rather
+                # than being UNKNOWN_SOURCE
+                seen_templates[self.origin.template_name] = self.origin.name
+                logger.debug(
+                    "Adding Template._render(%s) to seen-during-request",
+                    self.origin.name,
+                )
 
+        # Seen by another layer, skip work
+        if hasattr(self, "livereloadish_seen"):
+            return output
+        # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
+        if hasattr(self, "template") and hasattr(self.template, "livereloadish_seen"):
+            return output
 
-def do_patch_get_template() -> bool:
-    if not hasattr(loader.get_template, "livereloadish_patched"):
-        logger.debug("Patching: django.template.loader.get_template")
-        loader.get_template = patched_get_template
-        loader.get_template.livereloadish_patched = True
-        return True
-    return False
-
-
-def patched_select_template(template_name_list: Iterable[str], using=None):
-    __traceback_hide__ = True
-    template = original_select_template(template_name_list, using=using)
-    # Seen by another layer, skip work
-    if hasattr(template, "livereloadish_patched"):
-        return template
-    # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
-    if hasattr(template, "template") and hasattr(
-        template.template, "livereloadish_patched"
-    ):
-        return template
-    try:
-        abspath = os.path.abspath(template.origin.name)
-    except AttributeError:
-        pass
-    else:
-        content_type, encoding = mimetypes.guess_type(abspath)
-        appconf = apps.get_app_config("livereloadish")
-        if content_type in appconf.seen:
-            logger.debug(
-                "Adding select_template(%s) to tracked assets using stat syscall",
-                abspath,
-            )
-            appconf.add_to_seen(
-                content_type,
-                template.origin.template_name,
-                abspath,
-                os.path.getmtime(abspath),
-                # Support the notion of whether or not a template NEEDS a hard refresh
-                # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
-                # because then things added via {% include %} would also constitute
-                # a full reload...
-                requires_full_reload=False,
-            )
+        try:
+            abspath = os.path.abspath(self.origin.name)
+        except AttributeError:
+            pass
         else:
-            logger.debug(
-                "Skipping select_template(%s) due to content type %s being un-tracked",
-                abspath,
-                content_type,
-            )
-    template.livereloadish_patched = True
-    return template
+            content_type, encoding = mimetypes.guess_type(abspath)
+            appconf = apps.get_app_config("livereloadish")
+            if content_type in appconf.seen:
+                logger.debug(
+                    "Adding Template._render(%s) to tracked assets using stat syscall",
+                    abspath,
+                )
+                appconf.add_to_seen(
+                    content_type,
+                    self.origin.template_name,
+                    abspath,
+                    os.path.getmtime(abspath),
+                    # Support the notion of whether or not a template NEEDS a hard refresh
+                    # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
+                    # because then things added via {% include %} would also constitute
+                    # a full reload...
+                    requires_full_reload=False,
+                )
+            else:
+                logger.debug(
+                    "Skipping Template._render(%s) due to content type %s being un-tracked",
+                    abspath,
+                    content_type,
+                )
+        self.livereloadish_seen = True
+        return output
 
 
-def do_patch_select_template() -> bool:
-    if not hasattr(loader.select_template, "livereloadish_patched"):
-        logger.debug("Patching: django.template.loader.select_template")
-        loader.select_template = patched_select_template
-        loader.select_template.livereloadish_patched = True
+def do_patch_template_render() -> bool:
+    if not hasattr(Template, "livereloadish_patched"):
+        logger.debug("Patching: django.template.Template._render")
+        Template._render = patched_template_render
+        Template.livereloadish_patched = True
         return True
     return False
 
 
 def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
+    """
+    This patch is required to ensure that by the time patched_extendsnode_get_parent
+    executes we already have the Seen item in the data, otherwise we'll get
+    a new Seen data but without the requires_full_reload=True
+    """
     __traceback_hide__ = True
     template, origin = original_engine_find_template(self, name, dirs=dirs, skip=skip)
     # Seen by another layer, skip work
-    if hasattr(template, "livereloadish_patched"):
+    if hasattr(template, "livereloadish_seen"):
         return template, origin
     # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
     if hasattr(template, "template") and hasattr(
-        template.template, "livereloadish_patched"
+        template.template, "livereloadish_seen"
     ):
         return template
     try:
@@ -295,70 +267,20 @@ def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
                 abspath,
                 content_type,
             )
-    template.livereloadish_patched = True
+    template.livereloadish_seen = True
     return template, origin
 
 
 def do_patch_engine_find_template() -> bool:
+    """
+    This patch is required to ensure that by the time patched_extendsnode_get_parent
+    executes we already have the Seen item in the data, otherwise we'll get
+    a new Seen data but without the requires_full_reload=True
+    """
     if not hasattr(Engine, "livereloadish_patched"):
         logger.debug("Patching: django.template.engine.Engine.find_template")
         Engine.find_template = patched_engine_find_template
         Engine.livereloadish_patched = True
-        return True
-    return False
-
-
-def patched_templateresponse_resolve_template(self: TemplateResponse, template: Any):
-    __traceback_hide__ = True
-    template = original_templateresponse_resolve_template(self, template)
-    # Seen by another layer, skip work
-    if hasattr(template, "livereloadish_patched"):
-        return template
-    # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
-    if hasattr(template, "template") and hasattr(
-        template.template, "livereloadish_patched"
-    ):
-        return template
-    try:
-        abspath = os.path.abspath(template.origin.name)
-    except AttributeError:
-        pass
-    else:
-        content_type, encoding = mimetypes.guess_type(abspath)
-        appconf = apps.get_app_config("livereloadish")
-        if content_type in appconf.seen:
-            logger.debug(
-                "Adding TemplateResponse.resolve_template(%s) to tracked assets using stat syscall",
-                abspath,
-            )
-            appconf.add_to_seen(
-                content_type,
-                template.origin.template_name,
-                abspath,
-                os.path.getmtime(abspath),
-                # If the first element is {% "extends" %} we PROBABLY don't need to
-                # do a full page reload. But if it DOES, we do want to do one, because
-                # it may have changed stuff in <head> which isn't otherwise reflected
-                # in a partial reload by eg: unpoly/turbolinks etc.
-                requires_full_reload=False,
-            )
-        else:
-            logger.debug(
-                "Skipping TemplateResponse.resolve_template(%s) due to content type %s being un-tracked",
-                abspath,
-                content_type,
-            )
-    template.livereloadish_patched = True
-    return template
-
-
-def do_patch_templateresponse_resolve_template() -> bool:
-    if not hasattr(TemplateResponse, "livereloadish_patched"):
-        logger.debug(
-            "Patching: django.template.response.TemplateResponse.resolve_template"
-        )
-        TemplateResponse.resolve_template = patched_templateresponse_resolve_template
-        TemplateResponse.livereloadish_patched = True
         return True
     return False
 
@@ -399,7 +321,7 @@ def do_patch_staticnode_url() -> bool:
 def patched_extendsnode_get_parent(self: ExtendsNode, context: Context) -> Any:
     __traceback_hide__ = True
     template = original_extendsnode_get_parent(self, context)
-    if hasattr(template, "livereloadish_patched"):
+    if hasattr(template, "livereloadish_seen"):
         try:
             abspath = os.path.abspath(template.origin.name)
         except AttributeError:
@@ -453,7 +375,7 @@ def patched_filesystemstorage_url(self: FileSystemStorage, name: str) -> str:
 
 def do_patch_filesystemstorage_url() -> bool:
     if not hasattr(FileSystemStorage, "livereloadish_patched"):
-        logger.debug("Patching: django.templatetags.static.StaticNode.url")
+        logger.debug("Patching: django.core.files.storage.FileSystemStorage.url")
         FileSystemStorage.url = patched_filesystemstorage_url
         FileSystemStorage.livereloadish_patched = True
         return True

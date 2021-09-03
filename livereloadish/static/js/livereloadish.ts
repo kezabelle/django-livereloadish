@@ -439,6 +439,7 @@
         queuedUp[file] = msg;
     }
 
+    const promptedUnrelatedPagePreviously: string[] = [];
     /**
      * Refresh the page because a Django template was noticed as changing.
      * If the Django monkeypatches say that it was a _root_ template which changed,
@@ -454,6 +455,26 @@
      */
     const pageStrategy: ReloadStrategy = (msg: AssetChangeData): void => {
         const file = msg.filename[0];
+        // Check the list of Django template files seen during this request, hopefully.
+        const seenTemplatesExists: HTMLTemplateElement | null = document.querySelector(`template[id="livereloadish-page-templates"]`);
+        let seenTemplates = {};
+        if (seenTemplatesExists) {
+            seenTemplates = JSON.parse(seenTemplatesExists.innerHTML);
+        }
+        if (!(file in seenTemplates)) {
+            // If it doesn't look related to this page, prompt the user to reload
+            // and if they choose not to, ignore subsequent changes to the file.
+            if (promptedUnrelatedPagePreviously.indexOf(file) > -1) {
+                console.debug(logPage, logFmt, `${file} is probably unrelated, and the user has already been notified`);
+                return;
+            }
+            const confirmReload = window.confirm(`Possibly unrelated file "${file}" has been changed, reload?`)
+            if (!confirmReload) {
+                promptedUnrelatedPagePreviously.push(file);
+                console.error(logPage, logFmt, `${file} is probably unrelated, page may need manually reloading`);
+                return;
+            }
+        }
         const definitelyRequiresReload = msg.filename[3];
         if (definitelyRequiresReload) {
             console.debug(logPage, logFmt, `Server suggested that this must do a full reload, because ${file} changed`);
@@ -779,6 +800,7 @@
         return selectedReloadStrategy(msg);
     }
 
+    const promptedAssetDeletedPreviously: string[] = [];
     /**
      * If a file is deleted (ie: getting the mtime of it no longer succeeds) then
      * notify the user that they'll need to refresh the page, via a modal confirm dialog.
@@ -786,19 +808,18 @@
      * If the file deletion notification comes through multiple times for the same file,
      * avoid ending up in a loop by tracking the ones seen already.
      */
-    const promptedPreviously: string[] = [];
     const assetHasDeleted = (event: Event): void => {
         const msg = JSON.parse((event as MessageEvent).data) as AssetChangeData;
         const fileName = msg.filename[0];
-        if (promptedPreviously.indexOf(fileName) > -1) {
+        if (promptedAssetDeletedPreviously.indexOf(fileName) > -1) {
             console.debug(logPrefix, logFmt, `${fileName} has been moved or deleted, and the user has already been notified`);
             return;
         }
-        promptedPreviously.push(fileName);
         const confirmReload = window.confirm(`File "${fileName}" has been moved or deleted, reload the page?`)
         if (confirmReload) {
             return refreshStrategy(msg);
         } else {
+            promptedAssetDeletedPreviously.push(fileName);
             console.error(logPrefix, logFmt, `${fileName} has been moved or deleted, page may need manually reloading`);
         }
     }
@@ -840,6 +861,13 @@
         errorCount = 0;
         for (const key in queuedUp) {
             delete queuedUp[key];
+        }
+        // drain these consts.
+        while (promptedUnrelatedPagePreviously.length) {
+            promptedUnrelatedPagePreviously.pop();
+        }
+        while (promptedAssetDeletedPreviously.length) {
+            promptedAssetDeletedPreviously.pop();
         }
         // Don't know that I can remove ... myself.
         // window.removeEventListener('pagehide', unload);

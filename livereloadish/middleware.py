@@ -1,16 +1,18 @@
+import json
 import logging
 import time
 from collections import namedtuple
-from typing import Any
+from typing import Any, Dict
 from uuid import uuid4
 
+from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 from django.core.handlers.wsgi import WSGIRequest
 from django.http.response import HttpResponseBase
 from django.urls import include, path
 
-import livereloadish.urls
+from .urls import urlpatterns as livereloadish_urlpatterns
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,8 @@ class LivereloadishMiddleware:
         '<meta name="livereloadish-page-strategy" content="reload">\n'
         "</head>"
     )
+    insert_templates_before = "</body>"
+    insert_templates_content = '<template id="livereloadish-page-templates" hidden>{templates}</template>\n</body>'
 
     def __init__(self, get_response: Any) -> None:
         if not settings.DEBUG:
@@ -50,13 +54,20 @@ class LivereloadishMiddleware:
     def __call__(self, request: WSGIRequest) -> HttpResponseBase:
         if request.path[0:15] == f"/{self.prefix}/" and settings.DEBUG:
             request.urlconf = NamedUrlconf(
-                path(f"{self.prefix}/", include(livereloadish.urls.urlpatterns))
+                path(f"{self.prefix}/", include(livereloadish_urlpatterns))
             )
             return self.get_response(request)
-        return self.insert_js(request, self.get_response(request))
+        appconf = apps.get_app_config("livereloadish")
+        appconf.during_request.templates = {}
+        response = self.get_response(request)
+        templates = appconf.during_request.templates
+        return self.insert_html(request, response, templates)
 
-    def insert_js(
-        self, request: WSGIRequest, response: HttpResponseBase
+    def insert_html(
+        self,
+        request: WSGIRequest,
+        response: HttpResponseBase,
+        templates: Dict[str, str],
     ) -> HttpResponseBase:
         # This prelude is taken from Django-debug-toolbar's middleware, because
         # it's been rock solid for my usage for 10 years, can't be totally wrong.
@@ -72,7 +83,10 @@ class LivereloadishMiddleware:
                 request.path,
             )
             return response
+
         content = response.content.decode(response.charset)
+        content_touched = False
+
         # I don't want to load the SSE connection for 401/403/404 etc
         # because those cannot be rectified by a CSS/JS/HTML change so the auto-reloader
         # would kick in for the Python/Django change.
@@ -86,18 +100,15 @@ class LivereloadishMiddleware:
                 "Livereloadish is telling the error page to do full page reloads for %s",
                 request.path,
             )
-            response.content = content.replace(
+            content = content.replace(
                 self.insert_meta_before,
                 self.insert_meta_content,
             )
-            if "Content-Length" in response.headers:
-                response["Content-Length"] = len(response.content)
-            # TODO: avoid decoding it again here for the next if branch? IDK.
-            content = response.content.decode(response.charset)
+            content_touched = True
 
         if self.insert_js_before in content:
             logger.debug("Livereloadish is being mounted for path %s", request.path)
-            response.content = content.replace(
+            content = content.replace(
                 self.insert_js_before,
                 self.insert_js_content.format(
                     prefix=self.prefix,
@@ -106,6 +117,23 @@ class LivereloadishMiddleware:
                     page_load=time.time(),
                 ),
             )
-            if "Content-Length" in response.headers:
-                response["Content-Length"] = len(response.content)
+            content_touched = True
+
+        if self.insert_templates_before in content:
+            logger.debug(
+                "Livereloadish saw %s Django templates for path %s",
+                len(templates),
+                request.path,
+            )
+            content = content.replace(
+                self.insert_templates_before,
+                self.insert_templates_content.format(
+                    templates=json.dumps(templates),
+                ),
+            )
+            content_touched = True
+
+        if content_touched:
+            response.content = content
+            response["Content-Length"] = len(response.content)
         return response
