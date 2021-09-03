@@ -75,6 +75,8 @@ class LiveReloadishConfig(AppConfig):
         "font/ttf": {},
         "font/woff": {},
         "font/woff2": {},
+        "text/x-python": {},
+        "application/x-python-code": {},
         # "application/json": {},
     }
     during_request = Local()

@@ -161,6 +161,8 @@
         "font/ttf" |
         "font/woff" |
         "font/woff2" |
+        "text/x-python" |
+        "application/x-python-code" |
         "application/octet-stream";
 
     /**
@@ -666,6 +668,8 @@
         "font/ttf": refreshStrategy,
         "font/woff": refreshStrategy,
         "font/woff2": refreshStrategy,
+        "text/x-python": pageStrategy,
+        "application/x-python-code": pageStrategy,
         "application/octet-stream": noopStrategy,
     }
     /**
@@ -687,6 +691,8 @@
         "font/ttf": queuedUpStrategy,
         "font/woff": queuedUpStrategy,
         "font/woff2": queuedUpStrategy,
+        "text/x-python": queuedUpStrategy,
+        "application/x-python-code": queuedUpStrategy,
         "application/octet-stream": queuedUpStrategy,
     }
 

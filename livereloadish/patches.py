@@ -11,11 +11,13 @@ from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.core.files.storage import FileSystemStorage
 from django.core.handlers.wsgi import WSGIRequest
+from django.dispatch import receiver
 from django.http import FileResponse, QueryDict, HttpResponseNotModified
 from django.template import Engine, Context, Template, NodeList
 from django.template.loader_tags import ExtendsNode
 from django.templatetags.static import StaticNode
 from django.utils._os import safe_join
+from django.utils.autoreload import file_changed
 from django.utils.cache import add_never_cache_headers, patch_cache_control
 from django.utils.http import parse_http_date, http_date
 from django.views import static
@@ -381,3 +383,37 @@ def do_patch_filesystemstorage_url() -> bool:
         FileSystemStorage.livereloadish_patched = True
         return True
     return False
+
+
+@receiver(file_changed, dispatch_uid="livereloadish_file-changed")
+def listen_for_python_changes(sender, file_path, **kwargs):
+    abspath = str(file_path)
+    content_type, encoding = mimetypes.guess_type(abspath)
+    try:
+        appconf = apps.get_app_config("livereloadish")
+    except LookupError:
+        return
+
+    if content_type in appconf.seen:
+        logger.debug(
+            "Adding listen_for_python_changes(%s) to tracked assets using stat syscall",
+            file_path,
+        )
+        appconf.add_to_seen(
+            content_type,
+            abspath,
+            abspath,
+            os.path.getmtime(abspath),
+            # Support the notion of whether or not a template NEEDS a hard refresh
+            # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
+            # because then things added via {% include %} would also constitute
+            # a full reload...
+            requires_full_reload=True,
+        )
+    else:
+        logger.debug(
+            "Skipping listen_for_python_changes(%s) due to content type %s being un-tracked",
+            abspath,
+            content_type,
+        )
+    return
