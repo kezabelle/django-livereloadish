@@ -12,7 +12,7 @@ from django.contrib.staticfiles import finders
 from django.core.files.storage import FileSystemStorage
 from django.core.handlers.wsgi import WSGIRequest
 from django.http import FileResponse, QueryDict, HttpResponseNotModified
-from django.template import Engine, Context, Template
+from django.template import Engine, Context, Template, NodeList
 from django.template.loader_tags import ExtendsNode
 from django.templatetags.static import StaticNode
 from django.utils._os import safe_join
@@ -22,7 +22,7 @@ from django.views import static
 
 logger = logging.getLogger(__name__)
 original_serve = static.serve
-original_template_render = Template._render
+original_template_compile_nodelist = Template.compile_nodelist
 original_engine_find_template = Engine.find_template
 original_staticnode_url = StaticNode.url
 original_extendsnode_get_parent = ExtendsNode.get_parent
@@ -146,19 +146,18 @@ def do_patch_static_serve() -> bool:
     return False
 
 
-def patched_template_render(self: Template, context) -> str:
+def patched_template_compile_nodelist(self: Template) -> NodeList:
     try:
         appconf = apps.get_app_config("livereloadish")
     except LookupError:
-        return original_template_render(self, context)
+        return original_template_compile_nodelist(self)
     else:
-        output = original_template_render(self, context)
         try:
             seen_templates = appconf.during_request.templates
         except AttributeError:
             # We're outside of the request/response cycle, or haven't got the middleware
             logger.debug(
-                "Ignoring Template._render(%s) for seen-during-request",
+                "Ignoring Template.compile_nodelist(%s) for seen-during-request",
                 self.origin.name,
             )
         else:
@@ -169,9 +168,11 @@ def patched_template_render(self: Template, context) -> str:
                 # than being UNKNOWN_SOURCE
                 seen_templates[self.origin.template_name] = self.origin.name
                 logger.debug(
-                    "Adding Template._render(%s) to seen-during-request",
+                    "Adding Template.compile_nodelist(%s) to seen-during-request",
                     self.origin.name,
                 )
+
+        output = original_template_compile_nodelist(self)
 
         # Seen by another layer, skip work
         if hasattr(self, "livereloadish_seen"):
@@ -189,7 +190,7 @@ def patched_template_render(self: Template, context) -> str:
             appconf = apps.get_app_config("livereloadish")
             if content_type in appconf.seen:
                 logger.debug(
-                    "Adding Template._render(%s) to tracked assets using stat syscall",
+                    "Adding Template.compile_nodelist(%s) to tracked assets using stat syscall",
                     abspath,
                 )
                 appconf.add_to_seen(
@@ -205,7 +206,7 @@ def patched_template_render(self: Template, context) -> str:
                 )
             else:
                 logger.debug(
-                    "Skipping Template._render(%s) due to content type %s being un-tracked",
+                    "Skipping Template.compile_nodelist(%s) due to content type %s being un-tracked",
                     abspath,
                     content_type,
                 )
@@ -213,10 +214,10 @@ def patched_template_render(self: Template, context) -> str:
         return output
 
 
-def do_patch_template_render() -> bool:
+def do_patch_template_compile_nodelist() -> bool:
     if not hasattr(Template, "livereloadish_patched"):
-        logger.debug("Patching: django.template.Template._render")
-        Template._render = patched_template_render
+        logger.debug("Patching: django.template.Template.compile_nodelist")
+        Template.compile_nodelist = patched_template_compile_nodelist
         Template.livereloadish_patched = True
         return True
     return False

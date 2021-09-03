@@ -22,7 +22,7 @@ from livereloadish.patches import (
     do_patch_staticnode_url,
     do_patch_filesystemstorage_url,
     do_patch_extendsnode_get_parent,
-    do_patch_template_render,
+    do_patch_template_compile_nodelist,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class LiveReloadishConfig(AppConfig):
         return all(
             (
                 do_patch_static_serve(),
-                do_patch_template_render(),
+                do_patch_template_compile_nodelist(),
                 do_patch_engine_find_template(),
                 do_patch_filesystemstorage_url(),
                 do_patch_staticnode_url(),
