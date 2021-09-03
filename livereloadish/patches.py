@@ -169,6 +169,7 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
                 # Note that at this point it should have an actual path rather
                 # than being UNKNOWN_SOURCE
                 seen_templates[self.origin.template_name] = self.origin.name
+                seen_templates[self.origin.name] = self.origin.template_name
                 logger.debug(
                     "Adding Template.compile_nodelist(%s) to seen-during-request",
                     self.origin.name,
