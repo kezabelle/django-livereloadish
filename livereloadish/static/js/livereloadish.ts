@@ -508,7 +508,7 @@
             if (swupInstance && swupInstance?.loadPage) {
                 console.debug(logPage, logFmt, `Reloading the content via swup.reloadPage(...), because ${file} changed`);
                 swupInstance.loadPage({
-                    'url': url.toString(),
+                    'url': url.pathname + url.search,
                 })
             } else {
                 console.debug(logPage, logFmt, `Cannot find the swup instance as 'window.swup' (possibly defined as a non global const/var`);

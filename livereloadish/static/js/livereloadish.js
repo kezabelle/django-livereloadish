@@ -441,7 +441,7 @@
             if (swupInstance && (swupInstance === null || swupInstance === void 0 ? void 0 : swupInstance.loadPage)) {
                 console.debug(logPage, logFmt, "Reloading the content via swup.reloadPage(...), because " + file + " changed");
                 swupInstance.loadPage({
-                    'url': url.toString(),
+                    'url': url.pathname + url.search,
                 });
             }
             else {
