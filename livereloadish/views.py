@@ -106,7 +106,7 @@ class SSEView(View):
 
     def loop(self, request, reqid: str, last_scan: float, appconf: LiveReloadishConfig):
         increment = appconf.sleep_quick
-        spent = 0.0
+        loop_count = 0
         logger.info(
             "[%s] Livereloadish SSE client connected at %s, starting",
             reqid,
@@ -206,10 +206,15 @@ class SSEView(View):
                 # but waitress doesn't catch it so it bleeds up.
                 # return ""
 
-            spent += increment
+            loop_count += 1
 
-            if spent % 10 == 0:
-                yield f'id: {reqid},{last_scan}\nevent: ping\ndata: {{"msg": "keep-alive ping at {spent}"}}\n\n'
+            if loop_count % 20 == 0:
+                yield f'id: {reqid},{last_scan}\nevent: ping\ndata: {{"msg": "keep-alive ping after {loop_count} loops"}}\n\n'
+                logger.info(
+                    "[%s] Livereloadish keep-alive ping",
+                    reqid,
+                    extra={"request": request},
+                )
                 appconf.dump_to_lockfile()
 
             with Timer() as fileiterator:
