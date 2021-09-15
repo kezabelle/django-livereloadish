@@ -8,6 +8,10 @@ import time
 from typing import Any, Union
 from uuid import UUID
 
+try:
+    from psutil import sensors_battery
+except ImportError:
+    sensors_battery = None
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
@@ -105,7 +109,6 @@ class SSEView(View):
         )
 
     def loop(self, request, reqid: str, last_scan: float, appconf: LiveReloadishConfig):
-        increment = appconf.sleep_quick
         loop_count = 0
         logger.info(
             "[%s] Livereloadish SSE client connected at %s, starting",
@@ -208,11 +211,17 @@ class SSEView(View):
 
             loop_count += 1
 
+            min_increment = appconf.sleep_quick
             if loop_count % 20 == 0:
-                yield f'id: {reqid},{last_scan}\nevent: ping\ndata: {{"msg": "keep-alive ping after {loop_count} loops"}}\n\n'
+                if sensors_battery:
+                    battery_percentage = sensors_battery()
+                    if battery_percentage and battery_percentage.percent <= 50:
+                        min_increment = appconf.sleep_quick * 2
+                yield f'id: {reqid},{last_scan}\nevent: ping\ndata: {{"msg": "keep-alive ping after {loop_count} loops, scanning every {min_increment}s"}}\n\n'
                 logger.info(
-                    "[%s] Livereloadish keep-alive ping",
+                    "[%s] Livereloadish keep-alive ping, scanning every %ss",
                     reqid,
+                    min_increment,
                     extra={"request": request},
                 )
                 appconf.dump_to_lockfile()
@@ -295,7 +304,7 @@ class SSEView(View):
             last_scan = time.time()
             scan_duration = fileiterator.elapsed()
             # Slow down (or stop) the watcher if it starts taking too long...
-            if scan_duration >= appconf.sleep_quick:
+            if scan_duration >= min_increment:
                 increment = appconf.sleep_slow
             elif scan_duration >= appconf.sleep_slow:
                 socket_is_open = False
@@ -310,7 +319,7 @@ class SSEView(View):
             elif file_count == 0:
                 increment = appconf.sleep_slow
             else:
-                increment = appconf.sleep_quick
+                increment = min_increment
 
             logger.debug(
                 "[%s] Checking mtimes for %s files took %ss, checking again in %ss",
