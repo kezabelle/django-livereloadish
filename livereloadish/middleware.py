@@ -44,6 +44,10 @@ class LivereloadishMiddleware:
     )
     insert_templates_before = "</body>"
     insert_templates_content = '<template id="livereloadish-page-templates" hidden>{templates}</template>\n</body>'
+    insert_files_before = "</body>"
+    insert_files_content = (
+        '<template id="livereloadish-page-files" hidden>{files}</template>\n</body>'
+    )
 
     def __init__(self, get_response: Any) -> None:
         if not settings.DEBUG:
@@ -62,15 +66,21 @@ class LivereloadishMiddleware:
             )
             return self.get_response(request)
         self.appconf.during_request.templates = {}
+        self.appconf.during_request.files = {}
         response = self.get_response(request)
-        templates = self.appconf.during_request.templates
-        return self.insert_html(request, response, templates)
+        return self.insert_html(
+            request,
+            response,
+            self.appconf.during_request.templates,
+            self.appconf.during_request.files,
+        )
 
     def insert_html(
         self,
         request: WSGIRequest,
         response: HttpResponseBase,
         templates: Dict[str, str],
+        files: Dict[str, str],
     ) -> HttpResponseBase:
         # This prelude is taken from Django-debug-toolbar's middleware, because
         # it's been rock solid for my usage for 10 years, can't be totally wrong.
@@ -122,6 +132,9 @@ class LivereloadishMiddleware:
             )
             content_touched = True
 
+        response["X-Livereloadish-Templates"] = json.dumps(templates)
+        response["X-Livereloadish-Files"] = json.dumps(files)
+
         if self.insert_templates_before in content:
             logger.debug(
                 "Livereloadish saw %s Django templates for path %s",
@@ -131,7 +144,21 @@ class LivereloadishMiddleware:
             content = content.replace(
                 self.insert_templates_before,
                 self.insert_templates_content.format(
-                    templates=json.dumps(templates),
+                    templates=response["X-Livereloadish-Templates"],
+                ),
+            )
+            content_touched = True
+
+        if self.insert_files_before in content:
+            logger.debug(
+                "Livereloadish saw %s files for path %s",
+                len(files),
+                request.path,
+            )
+            content = content.replace(
+                self.insert_files_before,
+                self.insert_files_content.format(
+                    files=response["X-Livereloadish-Files"],
                 ),
             )
             content_touched = True

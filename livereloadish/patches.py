@@ -304,6 +304,26 @@ def patched_staticnode_url(self: StaticNode, context: Context) -> str:
                 ident = os.path.getmtime(underlying_file)
             except FileNotFoundError:
                 ident = time.time()
+            else:
+                # And now, try and match this file to things that
+                # were loaded during "this request" (if there is one)
+                try:
+                    appconf = apps.get_app_config("livereloadish")
+                    seen_files = appconf.during_request.files
+                except (LookupError, AttributeError):
+                    logger.debug(
+                        "Ignoring StaticNode.url(%s) for seen-during-request",
+                        name,
+                    )
+                else:
+                    # We've seen this file, let's try and mark it as related to a
+                    # given request...
+                    seen_files[name] = underlying_file
+                    seen_files[underlying_file] = name
+                    logger.debug(
+                        "Adding StaticNode.url(%s) to seen-during-request",
+                        name,
+                    )
         else:
             ident = time.time()
     else:
@@ -371,6 +391,26 @@ def patched_filesystemstorage_url(self: FileSystemStorage, name: str) -> str:
             ident = os.path.getmtime(underlying_file)
         except FileNotFoundError:
             ident = time.time()
+        else:
+            # And now, try and match this file to things that
+            # were loaded during "this request" (if there is one)
+            try:
+                appconf = apps.get_app_config("livereloadish")
+                seen_files = appconf.during_request.files
+            except (LookupError, AttributeError):
+                logger.debug(
+                    "Ignoring FileSystemStorage.url(%s) for seen-during-request",
+                    name,
+                )
+            else:
+                # We've seen this file, let's try and mark it as related to a
+                # given request...
+                seen_files[name] = underlying_file
+                seen_files[underlying_file] = name
+                logger.debug(
+                    "Adding FileSystemStorage.url(%s) to seen-during-request",
+                    name,
+                )
     else:
         ident = time.time()
     qd.setdefault("livereloadish", ident)
