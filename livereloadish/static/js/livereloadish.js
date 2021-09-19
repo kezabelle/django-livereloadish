@@ -450,6 +450,7 @@
             }
         }
         else {
+            console.debug(logPage, logFmt, "Reloading the body content via udomdiff, because " + file + " changed");
             var fetchResponse = window.fetch(url.toString(), {
                 'mode': 'same-origin',
                 'credentials': 'same-origin',
@@ -462,7 +463,7 @@
                 }
                 return response.text();
             }).then(function (body) {
-                console.debug(logPage, logFmt, "Reloading the body content via udomdiff, because " + file + " changed");
+                console.debug(logPage, logFmt, "Received the body content, replacing via udomdiff, because " + file + " changed");
                 var fragment = new DOMParser().parseFromString(body, 'text/html');
                 var fragmentSaysReload = fragment.querySelector("meta[name='livereloadish-page-strategy'][content='reload']");
                 if (fragmentSaysReload) {

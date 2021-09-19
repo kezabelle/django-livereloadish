@@ -515,6 +515,7 @@
                 return refreshStrategy(msg);
             }
         } else {
+            console.debug(logPage, logFmt, `Reloading the body content via udomdiff, because ${file} changed`);
             const fetchResponse = window.fetch(url.toString(), {
                 'mode': 'same-origin',
                 'credentials': 'same-origin',
@@ -527,7 +528,7 @@
                 }
                 return response.text();
             }).then((body) => {
-                console.debug(logPage, logFmt, `Reloading the body content via udomdiff, because ${file} changed`);
+                console.debug(logPage, logFmt, `Received the body content, replacing via udomdiff, because ${file} changed`);
                 const fragment = new DOMParser().parseFromString(body, 'text/html');
                 const fragmentSaysReload: HTMLMetaElement | null = fragment.querySelector("meta[name='livereloadish-page-strategy'][content='reload']")
                 if (fragmentSaysReload) {
