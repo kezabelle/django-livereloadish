@@ -191,9 +191,10 @@
      * Flash-of-Unstyled-Content between removal and loading, both of which may
      * be happening in tandem.
      */
-    var replaceCSSFile = function (link, mtime, origin) {
+    var replaceCSSFile = function (link, msg, origin) {
         var _a;
         if (link.href) {
+            var mtime = msg.new_time;
             var originalHref_1 = new RelativeUrl(link.href, origin);
             var newLink = document.createElement("link");
             for (var i = 0; i < link.attributes.length; i++) {
@@ -224,11 +225,12 @@
      * Should only fire for scripts which are idempotent or know how to unbind
      * and rebind existing state.
      */
-    var replaceJSFile = function (script, mtime, origin) {
+    var replaceJSFile = function (script, msg, origin) {
         var _a;
         // Like with CSS, we replace the element rather than adjust the src="..."
         // because that doesn't trigger re-running?
         if (script.src) {
+            var mtime = msg.new_time;
             var originalHref_2 = new RelativeUrl(script.src, origin);
             var newScript = document.createElement("script");
             for (var i = 0; i < script.attributes.length; i++) {
@@ -264,7 +266,8 @@
      * this function doesn't receive the path (it's checked by the caller), only
      * the modification time to update to.
      */
-    var replaceImageFile = function (img, mtime) {
+    var replaceImageFile = function (img, msg) {
+        var mtime = msg.new_time;
         if (img.src) {
             var originalHref = new RelativeUrl(img.src, origin);
             var newHref = originalHref.changeLivereloadishValue(mtime).toString();
@@ -295,9 +298,10 @@
      * Replaces an image which is either given via <div style="background-image: url(...)"></div>
      * or is present in a stylesheet rule as background: url(...) or background-image: url(...) etc.
      */
-    var replaceImageInStyle = function (element, mtime) {
+    var replaceImageInStyle = function (element, msg) {
         var originalHref = element.style.backgroundImage;
         if (originalHref) {
+            var mtime_1 = msg.new_time;
             var urlExtractor = /url\((['"]{0,1})\s*(.*?)(["']{0,1})\)/g;
             var newHref = originalHref.replace(urlExtractor, function (_fullText, leftQuote, actualHref, rightQuote, _matchStartPos, _inputValue) {
                 var _a;
@@ -308,7 +312,7 @@
                 if (actualHref.indexOf("..") > -1 && "parentStyleSheet" in element && ((_a = element.parentStyleSheet) === null || _a === void 0 ? void 0 : _a.href)) {
                     usingOrigin = element.parentStyleSheet.href;
                 }
-                var replacementUrl = new RelativeUrl(actualHref, usingOrigin).changeLivereloadishValue(mtime).toString();
+                var replacementUrl = new RelativeUrl(actualHref, usingOrigin).changeLivereloadishValue(mtime_1).toString();
                 return "url(" + leftQuote + replacementUrl + rightQuote + ")";
             });
             console.debug(logIMG, logFmt, "Replacing CSS background " + originalHref + "\" with " + newHref + " in-place");
@@ -324,17 +328,21 @@
      * has loaded or errored.
      */
     var cssStrategy = function (msg) {
-        var file = msg.filename[0];
+        var file = msg.info.relative_path;
+        var filename = msg.info.filename;
         var documentSaysReload = document.querySelector("meta[name='livereloadish-css-strategy'][content='reload']");
         if (documentSaysReload) {
             console.debug(logCSS, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
-        var reloadableLinkElements = document.querySelectorAll("link[rel=stylesheet][href*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([up-keep])");
+        // On the off-chance files are linked relatively rather than root-relative
+        // using {% static %} we look at the file NAME and potentially replace
+        // more files than necessary, instead of fewer than hoped.
+        var reloadableLinkElements = document.querySelectorAll("link[rel=stylesheet][href*=\"" + filename + "\"]:not([data-no-reload]):not([data-pending-removal]):not([up-keep])");
         var linkElements = Array.prototype.slice.call(reloadableLinkElements);
         for (var _a = 0, linkElements_1 = linkElements; _a < linkElements_1.length; _a++) {
             var linkElement = linkElements_1[_a];
-            replaceCSSFile(linkElement, msg.new_time, origin);
+            replaceCSSFile(linkElement, msg, origin);
         }
     };
     /**
@@ -343,7 +351,7 @@
      * because the root template is more likely to contain non-visible changes to <head> etc.
      */
     var refreshStrategy = function (msg) {
-        var file = msg.filename[0];
+        var file = msg.info.relative_path;
         console.debug(logPage, logFmt, "Reloading the page, because " + file + " changed");
         livereloadishTeardown();
         return document.location.reload();
@@ -367,7 +375,7 @@
      * event source is still listening and needing to register changes.
      */
     var queuedUpStrategy = function (msg) {
-        var file = msg.filename[0];
+        var file = msg.info.relative_path;
         var mtime = msg.new_time;
         console.debug(logQueue, logFmt, "Deferring " + file + " (modified at: " + mtime + ") until page is visible");
         queuedUp[file] = msg;
@@ -387,7 +395,7 @@
      * @todo For Sennajs it'd be app.navigate('url.html') by the look of it;
      */
     var pageStrategy = function (msg) {
-        var file = msg.filename[0];
+        var file = msg.info.relative_path;
         // Check the list of Django template files seen during this request, hopefully.
         var seenTemplatesExists = document.querySelector("template[id=\"livereloadish-page-templates\"]");
         var seenTemplates = {};
@@ -408,7 +416,7 @@
                 return;
             }
         }
-        var definitelyRequiresReload = msg.filename[3];
+        var definitelyRequiresReload = msg.info.requires_full_reload;
         if (definitelyRequiresReload) {
             console.debug(logPage, logFmt, "Server suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
@@ -418,12 +426,17 @@
             console.debug(logPage, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
+        var currentScrollY = window.scrollY;
         // @ts-ignore
         var unpoly = window.up, turbolinks = window.Turbolinks, Swup = window.Swup, swupInstance = window.swup, url = window.location;
         if (unpoly && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.version) && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.reload)) {
             console.debug(logPage, logFmt, "I think this is an Unpoly (https://unpoly.com/) page");
             console.debug(logPage, logFmt, "Reloading the root fragment vis up.reload(...), because " + file + " changed");
-            unpoly.reload({ navigate: true, cache: false }).catch(function (_renderResult) {
+            unpoly.reload({ navigate: true, cache: false })
+                .then(function (_renderResult) {
+                window.scrollTo(0, currentScrollY);
+            })
+                .catch(function (_renderResult) {
                 // Intentionally do a double-request to get any styles necessary for
                 // an error page. The error page itself will have a SSE connection (hmmm)
                 // that will resolve and reload it if it's due to a template error etc.
@@ -435,6 +448,7 @@
             console.debug(logPage, logFmt, "I think this is a Turbolinks (https://github.com/turbolinks/turbolinks) page");
             console.debug(logPage, logFmt, "Reloading the content via Turbolinks.visit(), because " + file + " changed");
             turbolinks.visit(url.toString());
+            window.scrollTo(0, currentScrollY);
         }
         else if (Swup) {
             console.debug(logPage, logFmt, "I think this is a Swup (https://swup.js.org/) page");
@@ -442,6 +456,9 @@
                 console.debug(logPage, logFmt, "Reloading the content via swup.reloadPage(...), because " + file + " changed");
                 swupInstance.loadPage({
                     'url': url.pathname + url.search,
+                });
+                swupInstance.on("pageView", function () {
+                    window.scrollTo(0, currentScrollY);
                 });
             }
             else {
@@ -475,6 +492,7 @@
                     console.debug(logPage, logFmt, "Updated the document title, because " + file + " changed");
                     document.title = fragment.title;
                 }
+                window.scrollTo(0, currentScrollY);
             }).catch(function (_err) {
                 console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");
                 return refreshStrategy(msg);
@@ -494,13 +512,17 @@
      */
     var jsStrategy = function (msg) {
         var origin = document.location.origin;
-        var file = msg.filename[0];
+        var file = msg.info.relative_path;
+        var filename = msg.info.filename;
         var documentSaysReload = document.querySelector("meta[name='livereloadish-js-strategy'][content='reload']");
         if (documentSaysReload) {
             console.debug(logJS, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
-        var possiblyReloadableScriptElements = document.querySelectorAll("script[src*=\"" + file + "\"]:not([data-no-reload]):not([data-pending-removal]):not([data-turbolinks-eval=\"false\"]):not([up-keep])");
+        // Reload anything matching the file NAME rather than the file PATH
+        // in case items are referenced relatively rather than using {% static %}
+        // or whatever. This shouldn't happen often, but can.
+        var possiblyReloadableScriptElements = document.querySelectorAll("script[src*=\"" + filename + "\"]:not([data-no-reload]):not([data-pending-removal]):not([data-turbolinks-eval=\"false\"]):not([up-keep])");
         var scriptElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
         for (var _a = 0, scriptElements_1 = scriptElements; _a < scriptElements_1.length; _a++) {
             var scriptElement = scriptElements_1[_a];
@@ -508,7 +530,7 @@
             var src = scriptElement.src;
             if (reloadable === "" || reloadable === "true") {
                 console.debug(logJS, logFmt, src + " is marked as reloadable");
-                replaceJSFile(scriptElement, msg.new_time, origin);
+                replaceJSFile(scriptElement, msg, origin);
             }
             else {
                 // Now we have to reload, so we can stop immediately in case there were multiple
@@ -528,18 +550,22 @@
     var imageStrategy = function (msg) {
         // https://github.com/livereload/livereload-js/blob/12cff7df9dcb36a14c00c5c092fef86efd201910/src/reloader.js#L238
         var origin = document.location.origin;
-        var file = msg.filename[0];
+        var file = msg.info.relative_path;
+        var filename = msg.info.filename;
         var documentSaysReload = document.querySelector("meta[name='livereloadish-image-strategy'][content='reload']");
         if (documentSaysReload) {
             console.debug(logIMG, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
-        var possiblyReloadableScriptElements = document.querySelectorAll("img[src*=\"" + file + "\"], img[srcset*=\"" + file + "\"], picture > source[srcset*=\"" + file + "\"]");
-        var imageElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
+        // We look at the file NAME rather than PATH because it may be referenced
+        // relatively (though unlikely) and it's easier to reload MORE images
+        // than to accidentally skip one which SHOULD be caught.
+        var possiblyReloadableImageElements = document.querySelectorAll("img[src*=\"" + filename + "\"], img[srcset*=\"" + filename + "\"], picture > source[srcset*=\"" + filename + "\"]");
+        var imageElements = Array.prototype.slice.call(possiblyReloadableImageElements);
         var totalReplacements = [];
         for (var _a = 0, imageElements_1 = imageElements; _a < imageElements_1.length; _a++) {
             var imageElement = imageElements_1[_a];
-            var newHref = replaceImageFile(imageElement, msg.new_time, origin);
+            var newHref = replaceImageFile(imageElement, msg, origin);
             if (newHref !== "") {
                 totalReplacements.push(newHref);
             }
@@ -547,12 +573,15 @@
         // Can't say I care about border images, so we'll only look for backgrounds...
         // Note that we could see items from document.images in here, because they could
         // have placeholder backgrounds...
-        var inlineStyles = document.querySelectorAll("[style*=\"background\"][style*=\"" + file + "\"]");
+        var inlineStyles = document.querySelectorAll("[style*=\"background\"][style*=\"" + filename + "\"]");
         var imageStyleElements = Array.prototype.slice.call(inlineStyles);
         for (var _b = 0, imageStyleElements_1 = imageStyleElements; _b < imageStyleElements_1.length; _b++) {
             var imageElement = imageStyleElements_1[_b];
-            if (imageElement.style.backgroundImage) {
-                var newHref = replaceImageInStyle(imageElement, msg.new_time, origin);
+            // We use the file NAME rather than the file PATH because the  text
+            // value may be relative to the page or whatever, and thus not
+            // contain /the/full/path.jpg
+            if (imageElement.style.backgroundImage && imageElement.style.backgroundImage.indexOf(filename) > -1) {
+                var newHref = replaceImageInStyle(imageElement, msg, origin);
                 if (newHref !== "") {
                     totalReplacements.push(newHref);
                 }
@@ -576,8 +605,11 @@
                 // but I don't see any replacement for it? How else do I know
                 // if it's technically an instanceof CSSStyleRule
                 if (rule.type == rule.STYLE_RULE) {
-                    if (rule.cssText.indexOf("background") > -1) {
-                        var newHref = replaceImageInStyle(rule, msg.new_time, origin);
+                    // We use the file NAME rather than the file PATH because the
+                    // text value may be relative to the page or whatever, and
+                    // thus not contain /the/full/path.jpg
+                    if (rule.cssText.indexOf("background") > -1 && rule instanceof CSSStyleRule && rule.style.backgroundImage.indexOf(filename) > -1) {
+                        var newHref = replaceImageInStyle(rule, msg, origin);
                         if (newHref !== "") {
                             totalReplacements.push(newHref);
                         }
@@ -610,6 +642,7 @@
         "font/woff2": refreshStrategy,
         "text/x-python": pageStrategy,
         "application/x-python-code": pageStrategy,
+        "text/markdown": refreshStrategy,
         "application/octet-stream": noopStrategy,
     };
     /**
@@ -633,6 +666,7 @@
         "font/woff2": queuedUpStrategy,
         "text/x-python": queuedUpStrategy,
         "application/x-python-code": queuedUpStrategy,
+        "text/markdown": queuedUpStrategy,
         "application/octet-stream": queuedUpStrategy,
     };
     /**
@@ -754,7 +788,7 @@
      */
     var assetHasDeleted = function (event) {
         var msg = JSON.parse(event.data);
-        var fileName = msg.filename[0];
+        var fileName = msg.info.relative_path;
         if (promptedAssetDeletedPreviously.indexOf(fileName) > -1) {
             console.debug(logPrefix, logFmt, fileName + " has been moved or deleted, and the user has already been notified");
             return;

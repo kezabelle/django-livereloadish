@@ -245,7 +245,7 @@ class SSEView(View):
                                     "asset_type": content_type,
                                     "old_time": last_scan,
                                     "new_time": file.mtime,
-                                    "filename": file,
+                                    "info": file._asdict(),
                                 }
                             )
                             logger.info(
@@ -269,7 +269,7 @@ class SSEView(View):
                                     "asset_type": content_type,
                                     "old_time": file.mtime,
                                     "new_time": 0,
-                                    "filename": file,
+                                    "info": file._asdict(),
                                 }
                             )
                             logger.info(
@@ -288,7 +288,7 @@ class SSEView(View):
                                         "asset_type": content_type,
                                         "old_time": file.mtime,
                                         "new_time": new_mtime,
-                                        "filename": file,
+                                        "info": file._asdict(),
                                     }
                                 )
                                 logger.info(

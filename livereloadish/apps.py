@@ -30,11 +30,22 @@ logger = logging.getLogger(__name__)
 
 class Seen(
     namedtuple(
-        "Seen", ("relative_path", "absolute_path", "mtime", "requires_full_reload")
+        "Seen",
+        ("relative_path", "absolute_path", "filename", "mtime", "requires_full_reload"),
     )
 ):
     def mtime_as_utc_date(self):
         return datetime.fromtimestamp(self.mtime, timezone.utc)
+
+    def _asdict(self):
+        return {
+            "relative_path": self.relative_path,
+            "absolute_path": self.absolute_path,
+            "filename": self.filename,
+            "mtime": self.mtime,
+            "mtime_iso": self.mtime_as_utc_date().isoformat(),
+            "requires_full_reload": self.requires_full_reload,
+        }
 
 
 class LiveReloadishConfig(AppConfig):
@@ -77,6 +88,7 @@ class LiveReloadishConfig(AppConfig):
         "font/woff2": {},
         "text/x-python": {},
         "application/x-python-code": {},
+        "text/markdown": {},
         # "application/json": {},
     }
     during_request = Local()
@@ -106,7 +118,11 @@ class LiveReloadishConfig(AppConfig):
         requires_full_reload: bool,
     ) -> Literal[True]:
         self.seen[content_type][absolute_path] = Seen(
-            relative_path, absolute_path, mtime, requires_full_reload
+            relative_path,
+            absolute_path,
+            os.path.basename(relative_path),
+            mtime,
+            requires_full_reload,
         )
         return True
 

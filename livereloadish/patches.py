@@ -34,6 +34,21 @@ original_filesystemstorage_url = FileSystemStorage.url
 if ".map" not in mimetypes.suffix_map:
     mimetypes.suffix_map[".map"] = ".json"
 
+markdowns = {
+    ".markdown",
+    ".mdown",
+    ".mkdn",
+    ".md",
+    ".mkd",
+    ".mdwn",
+    ".mdtxt",
+    ".mdtext",
+}
+for ext in markdowns:
+    _type, _encoding = mimetypes.guess_type(f"test{ext}")
+    if _type is None:
+        mimetypes.add_type("text/markdown", ext)
+
 
 def patched_serve(
     request: WSGIRequest,
@@ -169,7 +184,7 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
                 # Note that at this point it should have an actual path rather
                 # than being UNKNOWN_SOURCE
                 seen_templates[self.origin.template_name] = self.origin.name
-                seen_templates[self.origin.name] = self.origin.template_name
+                # seen_templates[self.origin.name] = self.origin.template_name
                 logger.debug(
                     "Adding Template.compile_nodelist(%s) to seen-during-request",
                     self.origin.name,
@@ -319,7 +334,7 @@ def patched_staticnode_url(self: StaticNode, context: Context) -> str:
                     # We've seen this file, let's try and mark it as related to a
                     # given request...
                     seen_files[name] = underlying_file
-                    seen_files[underlying_file] = name
+                    # seen_files[underlying_file] = name
                     logger.debug(
                         "Adding StaticNode.url(%s) to seen-during-request",
                         name,
@@ -406,7 +421,7 @@ def patched_filesystemstorage_url(self: FileSystemStorage, name: str) -> str:
                 # We've seen this file, let's try and mark it as related to a
                 # given request...
                 seen_files[name] = underlying_file
-                seen_files[underlying_file] = name
+                # seen_files[underlying_file] = name
                 logger.debug(
                     "Adding FileSystemStorage.url(%s) to seen-during-request",
                     name,
