@@ -42,11 +42,11 @@ class LivereloadishMiddleware:
         '<meta name="livereloadish-page-strategy" content="reload">\n'
         "</head>"
     )
-    insert_templates_before = "</body>"
-    insert_templates_content = '<template id="livereloadish-page-templates" hidden>{templates}</template>\n</body>'
-    insert_files_before = "</body>"
+    insert_templates_before = ("<!--livereloadish-page-templates-->", "</body>")
+    insert_templates_content = '<template id="livereloadish-page-templates" hidden>{templates}</template>\n{endmarker}'
+    insert_files_before = ("<!--livereloadish-page-files-->", "</body>")
     insert_files_content = (
-        '<template id="livereloadish-page-files" hidden>{files}</template>\n</body>'
+        '<template id="livereloadish-page-files" hidden>{files}</template>\n{endmarker}'
     )
 
     def __init__(self, get_response: Any) -> None:
@@ -135,33 +135,39 @@ class LivereloadishMiddleware:
         response["X-Livereloadish-Templates"] = json.dumps(templates)
         response["X-Livereloadish-Files"] = json.dumps(files)
 
-        if self.insert_templates_before in content:
-            logger.debug(
-                "Livereloadish saw %s Django templates for path %s",
-                len(templates),
-                request.path,
-            )
-            content = content.replace(
-                self.insert_templates_before,
-                self.insert_templates_content.format(
-                    templates=response["X-Livereloadish-Templates"],
-                ),
-            )
-            content_touched = True
+        for search_fragment in self.insert_templates_before:
+            if search_fragment in content:
+                logger.debug(
+                    "Livereloadish saw %s Django templates for path %s",
+                    len(templates),
+                    request.path,
+                )
+                content = content.replace(
+                    search_fragment,
+                    self.insert_templates_content.format(
+                        templates=response["X-Livereloadish-Templates"],
+                        endmarker=search_fragment,
+                    ),
+                )
+                content_touched = True
+                break
 
-        if self.insert_files_before in content:
-            logger.debug(
-                "Livereloadish saw %s files for path %s",
-                len(files),
-                request.path,
-            )
-            content = content.replace(
-                self.insert_files_before,
-                self.insert_files_content.format(
-                    files=response["X-Livereloadish-Files"],
-                ),
-            )
-            content_touched = True
+        for search_fragment in self.insert_files_before:
+            if search_fragment in content:
+                logger.debug(
+                    "Livereloadish saw %s files for path %s",
+                    len(files),
+                    request.path,
+                )
+                content = content.replace(
+                    search_fragment,
+                    self.insert_files_content.format(
+                        files=response["X-Livereloadish-Files"],
+                        endmarker=search_fragment,
+                    ),
+                )
+                content_touched = True
+                break
 
         if content_touched:
             response.content = content
