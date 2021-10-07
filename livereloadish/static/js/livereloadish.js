@@ -409,7 +409,11 @@
                 console.debug(logPage, logFmt, file + " is probably unrelated, and the user has already been notified");
                 return;
             }
-            var confirmReload = window.confirm("Possibly unrelated file \"" + file + "\" has been changed, reload?");
+            var goneAway = '';
+            if ((evtSource === null || evtSource === void 0 ? void 0 : evtSource.readyState) !== 1) {
+                goneAway = ' and runserver may be restarting,';
+            }
+            var confirmReload = window.confirm("Possibly unrelated file \"" + file + "\" has been changed," + goneAway + " reload anyway?");
             if (!confirmReload) {
                 promptedUnrelatedPagePreviously.push(file);
                 console.error(logPage, logFmt, file + " is probably unrelated, page may need manually reloading");
