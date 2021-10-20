@@ -182,6 +182,10 @@
         };
         return RelativeUrl;
     }());
+    var saveFormState = function () {
+    };
+    var restoreFormState = function () {
+    };
     /**
      * Replace an included CSS file (<link rel="stylesheet" href="...">).
      * Creates a new file with all the same attributes and a new querystring to
