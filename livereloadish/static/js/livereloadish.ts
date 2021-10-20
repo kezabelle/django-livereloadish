@@ -239,7 +239,7 @@
 
         /**
          * Take off the origin (scheme://hostname:port/) if it's there ... it probably
-         * is because we're not using getAttribute, which gives us the raw valu rather
+         * is because we're not using getAttribute, which gives us the raw value rather
          * than the one which has gone through the encoding and whatnot.
          */
         toString(): string {
@@ -496,7 +496,7 @@
         }
 
         if (seenTemplatesExists) {
-            seenTemplates = JSON.parse(seenTemplatesExists.innerHTML);
+            seenTemplates = JSON.parse(seenTemplatesExists.content.textContent ?? "{}");
         }
         if (!(file in seenTemplates)) {
             // If it doesn't look related to this page, prompt the user to reload
@@ -597,6 +597,7 @@
                     console.debug(logPage, logFmt, `Meta tag on the incoming page suggested that this must be a full reload, because ${file} changed`);
                     return refreshStrategy(msg);
                 }
+                // noinspection XHTMLIncompatabilitiesJS
                 udomdiff(document.body, Array.prototype.slice.call(document.body.children), Array.prototype.slice.call(fragment.body.children), (o: any) => o, null);
                 if (fragment.title != document.title) {
                     console.debug(logPage, logFmt, `Updated the document title, because ${file} changed`);
@@ -763,7 +764,7 @@
      * redirect to a queue for replaying later.
      * This set of strategies is used when the user has navigated away from the tab.
      */
-    const queudeUpReloadStrategies: { [key in MimeType]: ReloadStrategy } = {
+    const queuedUpReloadStrategies: { [key in MimeType]: ReloadStrategy } = {
         "text/css": queuedUpStrategy,
         "text/javascript": queuedUpStrategy,
         "application/javascript": queuedUpStrategy,
@@ -798,7 +799,7 @@
      */
     const switchStrategies = (_event: Event) => {
         if (document.visibilityState === "hidden") {
-            activeReloadStrategies = queudeUpReloadStrategies;
+            activeReloadStrategies = queuedUpReloadStrategies;
             console.debug(logQueue, logFmt, "Switched reloaders until page is visible again");
         } else {
             activeReloadStrategies = reloadStrategies;

@@ -15,6 +15,7 @@
     "noUnusedParameters": true,
     "esModuleInterop": true,
     "declaration": true,
+    "declarationMap": true,
     "lib": ["ES2020", "DOM"],
     "target": "ES5",
     "module": "AMD"

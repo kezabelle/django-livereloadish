@@ -157,7 +157,7 @@
         }
         /**
          * Take off the origin (scheme://hostname:port/) if it's there ... it probably
-         * is because we're not using getAttribute, which gives us the raw valu rather
+         * is because we're not using getAttribute, which gives us the raw value rather
          * than the one which has gone through the encoding and whatnot.
          */
         RelativeUrl.prototype.toString = function () {
@@ -395,7 +395,7 @@
      * @todo For Sennajs it'd be app.navigate('url.html') by the look of it;
      */
     var pageStrategy = function (msg) {
-        var _a;
+        var _a, _b;
         var file = msg.info.relative_path;
         // Check the list of Django template files seen during this request, hopefully.
         var seenTemplatesExists = document.querySelector("template[id=\"livereloadish-page-templates\"]");
@@ -416,7 +416,7 @@
             }
         };
         if (seenTemplatesExists) {
-            seenTemplates = JSON.parse(seenTemplatesExists.innerHTML);
+            seenTemplates = JSON.parse((_b = seenTemplatesExists.content.textContent) !== null && _b !== void 0 ? _b : "{}");
         }
         if (!(file in seenTemplates)) {
             // If it doesn't look related to this page, prompt the user to reload
@@ -519,6 +519,7 @@
                     console.debug(logPage, logFmt, "Meta tag on the incoming page suggested that this must be a full reload, because " + file + " changed");
                     return refreshStrategy(msg);
                 }
+                // noinspection XHTMLIncompatabilitiesJS
                 udomdiff(document.body, Array.prototype.slice.call(document.body.children), Array.prototype.slice.call(fragment.body.children), function (o) { return o; }, null);
                 if (fragment.title != document.title) {
                     console.debug(logPage, logFmt, "Updated the document title, because " + file + " changed");
@@ -690,7 +691,7 @@
      * redirect to a queue for replaying later.
      * This set of strategies is used when the user has navigated away from the tab.
      */
-    var queudeUpReloadStrategies = {
+    var queuedUpReloadStrategies = {
         "text/css": queuedUpStrategy,
         "text/javascript": queuedUpStrategy,
         "application/javascript": queuedUpStrategy,
@@ -723,7 +724,7 @@
      */
     var switchStrategies = function (_event) {
         if (document.visibilityState === "hidden") {
-            activeReloadStrategies = queudeUpReloadStrategies;
+            activeReloadStrategies = queuedUpReloadStrategies;
             console.debug(logQueue, logFmt, "Switched reloaders until page is visible again");
         }
         else {
