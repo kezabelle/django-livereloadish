@@ -425,15 +425,24 @@
             console.debug(logPage, logFmt, "Server suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
-        var documentSaysReload = document.querySelector("meta[name='livereloadish-page-strategy'][content='reload']");
-        if (documentSaysReload) {
-            console.debug(logPage, logFmt, "Meta tag suggested that this must do a full reload, because " + file + " changed");
+        var documentReloadTag = document.querySelector("meta[name='livereloadish-page-strategy'][content]");
+        var documentReloadValue = (documentReloadTag === null || documentReloadTag === void 0 ? void 0 : documentReloadTag.content.toLowerCase()) || "auto";
+        var knownReloadOptions = ['auto', 'reload', 'diff', 'unpoly', 'turbolinks', 'swup'];
+        var documentReloadStyle;
+        if (knownReloadOptions.indexOf(documentReloadValue) === -1) {
+            documentReloadStyle = documentReloadValue;
+        }
+        else {
+            documentReloadStyle = "auto";
+        }
+        if (documentReloadStyle === "reload") {
+            console.debug(logPage, logFmt, "Meta tag value \"" + documentReloadValue + "\" suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
         var currentScrollY = window.scrollY;
         // @ts-ignore
         var unpoly = window.up, turbolinks = window.Turbolinks, Swup = window.Swup, swupInstance = window.swup, url = window.location;
-        if (unpoly && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.version) && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.reload)) {
+        if ((documentReloadStyle === "unpoly" || documentReloadStyle === "auto") && (unpoly && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.version) && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.reload))) {
             console.debug(logPage, logFmt, "I think this is an Unpoly (https://unpoly.com/) page");
             console.debug(logPage, logFmt, "Reloading the root fragment vis up.reload(...), because " + file + " changed");
             unpoly.reload({ navigate: true, cache: false })
@@ -448,7 +457,7 @@
                 return refreshStrategy(msg);
             });
         }
-        else if (turbolinks && (turbolinks === null || turbolinks === void 0 ? void 0 : turbolinks.supported) && (turbolinks === null || turbolinks === void 0 ? void 0 : turbolinks.visit)) {
+        else if ((documentReloadStyle === "turbolinks" || documentReloadStyle === "auto") && (turbolinks && (turbolinks === null || turbolinks === void 0 ? void 0 : turbolinks.supported) && (turbolinks === null || turbolinks === void 0 ? void 0 : turbolinks.visit))) {
             console.debug(logPage, logFmt, "I think this is a Turbolinks (https://github.com/turbolinks/turbolinks) page");
             console.debug(logPage, logFmt, "Reloading the content via Turbolinks.visit(), because " + file + " changed");
             turbolinks.visit(url.toString());
@@ -456,7 +465,7 @@
         }
         else if (Swup) {
             console.debug(logPage, logFmt, "I think this is a Swup (https://swup.js.org/) page");
-            if (swupInstance && (swupInstance === null || swupInstance === void 0 ? void 0 : swupInstance.loadPage)) {
+            if ((documentReloadStyle === "swup" || documentReloadStyle === "auto") && (swupInstance && (swupInstance === null || swupInstance === void 0 ? void 0 : swupInstance.loadPage))) {
                 console.debug(logPage, logFmt, "Reloading the content via swup.reloadPage(...), because " + file + " changed");
                 swupInstance.loadPage({
                     'url': url.pathname + url.search,
@@ -470,7 +479,7 @@
                 return refreshStrategy(msg);
             }
         }
-        else {
+        else if (documentReloadStyle === "diff" || documentReloadStyle === "auto") {
             console.debug(logPage, logFmt, "Reloading the body content via udomdiff, because " + file + " changed");
             var fetchResponse = window.fetch(url.toString(), {
                 'mode': 'same-origin',
@@ -501,6 +510,13 @@
                 console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");
                 return refreshStrategy(msg);
             });
+        }
+        else {
+            // In theory this should never occur, but declaring the value as e.g. unpoly
+            // and then being unable to find unpoly on window/globalThis could happen
+            // so we fallback.
+            console.debug(logPage, logFmt, "Couldn't find a library to use (using meta tag value \"" + documentReloadValue + "\"); must do a full reload, because " + file + " changed");
+            return refreshStrategy(msg);
         }
     };
     /**
