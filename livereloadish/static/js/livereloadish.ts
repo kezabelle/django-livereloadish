@@ -479,6 +479,22 @@
         // Check the list of Django template files seen during this request, hopefully.
         const seenTemplatesExists: HTMLTemplateElement | null = document.querySelector(`template[id="livereloadish-page-templates"]`);
         let seenTemplates = {};
+
+        // Capture when the <template id="livereloadish-page-templates"></template> element
+        // was injected into the response, and then after playing a body mutation,
+        // check if it has changed.
+        // If it hasn't changed, it's probably because swup/unpoly or whatever are mounted
+        // on something other than body by intent, and the user needs to insert the
+        // special marker I made for this kind of scenario.
+        const seenTemplatesAt = +(seenTemplatesExists?.dataset.loadTime ?? "0");
+        const checkSeenTemplatesUpdated = (old: number) => {
+            const refreshedSeenTemplates: HTMLTemplateElement | null = document.querySelector(`template[id="livereloadish-page-templates"]`);
+            const newSeenTemplatesAt = +(refreshedSeenTemplates?.dataset.loadTime ?? "0");
+            if (newSeenTemplatesAt === old || newSeenTemplatesAt < old) {
+                console.warn(logPage, logFmt, `Injected template #livereloadish-page-templates has not been updated, you may need to use the <!--livereloadish-page-templates--> marker to fix it.`);
+            }
+        }
+
         if (seenTemplatesExists) {
             seenTemplates = JSON.parse(seenTemplatesExists.innerHTML);
         }
@@ -530,19 +546,21 @@
             unpoly.reload({navigate: true, cache: false})
                 .then((_renderResult: any) => {
                     window.scrollTo(0, currentScrollY);
+                    checkSeenTemplatesUpdated(seenTemplatesAt);
                 })
                 .catch((_renderResult: any) => {
-                // Intentionally do a double-request to get any styles necessary for
-                // an error page. The error page itself will have a SSE connection (hmmm)
-                // that will resolve and reload it if it's due to a template error etc.
-                console.debug(logPage, logFmt, `An error occurred doing a partial reload because ${file} changed`);
-                return refreshStrategy(msg);
-            });
+                    // Intentionally do a double-request to get any styles necessary for
+                    // an error page. The error page itself will have a SSE connection (hmmm)
+                    // that will resolve and reload it if it's due to a template error etc.
+                    console.debug(logPage, logFmt, `An error occurred doing a partial reload because ${file} changed`);
+                    return refreshStrategy(msg);
+                });
         } else if ((documentReloadStyle === "turbolinks" || documentReloadStyle === "auto") && (turbolinks && turbolinks?.supported && turbolinks?.visit)) {
             console.debug(logPage, logFmt, `I think this is a Turbolinks (https://github.com/turbolinks/turbolinks) page`);
             console.debug(logPage, logFmt, `Reloading the content via Turbolinks.visit(), because ${file} changed`);
             turbolinks.visit(url.toString());
             window.scrollTo(0, currentScrollY);
+            checkSeenTemplatesUpdated(seenTemplatesAt);
         } else if (Swup) {
             console.debug(logPage, logFmt, `I think this is a Swup (https://swup.js.org/) page`);
             if ((documentReloadStyle === "swup" || documentReloadStyle === "auto") && (swupInstance && swupInstance?.loadPage)) {
@@ -552,6 +570,7 @@
                 })
                 swupInstance.on("pageView", () => {
                     window.scrollTo(0, currentScrollY);
+                    checkSeenTemplatesUpdated(seenTemplatesAt);
                 });
             } else {
                 console.debug(logPage, logFmt, `Cannot find the swup instance as 'window.swup' (possibly defined as a non global const/var`);
@@ -584,6 +603,7 @@
                     document.title = fragment.title;
                 }
                 window.scrollTo(0, currentScrollY);
+                checkSeenTemplatesUpdated(seenTemplatesAt);
             }).catch(function (_err: Error) {
                 console.debug(logPage, logFmt, `An error occurred doing a partial reload because ${file} changed`);
                 return refreshStrategy(msg);

@@ -43,11 +43,9 @@ class LivereloadishMiddleware:
         "</head>"
     )
     insert_templates_before = ("<!--livereloadish-page-templates-->", "</body>")
-    insert_templates_content = '<template id="livereloadish-page-templates" hidden>{templates}</template>\n{endmarker}'
+    insert_templates_content = '<template id="livereloadish-page-templates" data-load-time="{page_load}" hidden>{templates}</template>\n{endmarker}'
     insert_files_before = ("<!--livereloadish-page-files-->", "</body>")
-    insert_files_content = (
-        '<template id="livereloadish-page-files" hidden>{files}</template>\n{endmarker}'
-    )
+    insert_files_content = '<template id="livereloadish-page-files" data-load-time="{page_load}" hidden>{files}</template>\n{endmarker}'
 
     def __init__(self, get_response: Any) -> None:
         if not settings.DEBUG:
@@ -119,6 +117,8 @@ class LivereloadishMiddleware:
             )
             content_touched = True
 
+        when = time.time()
+
         if self.insert_js_before in content:
             logger.debug("Livereloadish is being mounted for path %s", request.path)
             content = content.replace(
@@ -127,7 +127,7 @@ class LivereloadishMiddleware:
                     prefix=self.prefix,
                     uuid=uuid4(),
                     process_load=self.process_load,
-                    page_load=time.time(),
+                    page_load=when,
                 ),
             )
             content_touched = True
@@ -147,6 +147,7 @@ class LivereloadishMiddleware:
                     self.insert_templates_content.format(
                         templates=response["X-Livereloadish-Templates"],
                         endmarker=search_fragment,
+                        page_load=when,
                     ),
                 )
                 content_touched = True
@@ -164,6 +165,7 @@ class LivereloadishMiddleware:
                     self.insert_files_content.format(
                         files=response["X-Livereloadish-Files"],
                         endmarker=search_fragment,
+                        page_load=when,
                     ),
                 )
                 content_touched = True

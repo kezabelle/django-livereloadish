@@ -395,10 +395,26 @@
      * @todo For Sennajs it'd be app.navigate('url.html') by the look of it;
      */
     var pageStrategy = function (msg) {
+        var _a;
         var file = msg.info.relative_path;
         // Check the list of Django template files seen during this request, hopefully.
         var seenTemplatesExists = document.querySelector("template[id=\"livereloadish-page-templates\"]");
         var seenTemplates = {};
+        // Capture when the <template id="livereloadish-page-templates"></template> element
+        // was injected into the response, and then after playing a body mutation,
+        // check if it has changed.
+        // If it hasn't changed, it's probably because swup/unpoly or whatever are mounted
+        // on something other than body by intent, and the user needs to insert the
+        // special marker I made for this kind of scenario.
+        var seenTemplatesAt = +((_a = seenTemplatesExists === null || seenTemplatesExists === void 0 ? void 0 : seenTemplatesExists.dataset.loadTime) !== null && _a !== void 0 ? _a : "0");
+        var checkSeenTemplatesUpdated = function (old) {
+            var _a;
+            var refreshedSeenTemplates = document.querySelector("template[id=\"livereloadish-page-templates\"]");
+            var newSeenTemplatesAt = +((_a = refreshedSeenTemplates === null || refreshedSeenTemplates === void 0 ? void 0 : refreshedSeenTemplates.dataset.loadTime) !== null && _a !== void 0 ? _a : "0");
+            if (newSeenTemplatesAt === old || newSeenTemplatesAt < old) {
+                console.warn(logPage, logFmt, "Injected template #livereloadish-page-templates has not been updated, you may need to use the <!--livereloadish-page-templates--> marker to fix it.");
+            }
+        };
         if (seenTemplatesExists) {
             seenTemplates = JSON.parse(seenTemplatesExists.innerHTML);
         }
@@ -448,6 +464,7 @@
             unpoly.reload({ navigate: true, cache: false })
                 .then(function (_renderResult) {
                 window.scrollTo(0, currentScrollY);
+                checkSeenTemplatesUpdated(seenTemplatesAt);
             })
                 .catch(function (_renderResult) {
                 // Intentionally do a double-request to get any styles necessary for
@@ -462,6 +479,7 @@
             console.debug(logPage, logFmt, "Reloading the content via Turbolinks.visit(), because " + file + " changed");
             turbolinks.visit(url.toString());
             window.scrollTo(0, currentScrollY);
+            checkSeenTemplatesUpdated(seenTemplatesAt);
         }
         else if (Swup) {
             console.debug(logPage, logFmt, "I think this is a Swup (https://swup.js.org/) page");
@@ -472,6 +490,7 @@
                 });
                 swupInstance.on("pageView", function () {
                     window.scrollTo(0, currentScrollY);
+                    checkSeenTemplatesUpdated(seenTemplatesAt);
                 });
             }
             else {
@@ -506,6 +525,7 @@
                     document.title = fragment.title;
                 }
                 window.scrollTo(0, currentScrollY);
+                checkSeenTemplatesUpdated(seenTemplatesAt);
             }).catch(function (_err) {
                 console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");
                 return refreshStrategy(msg);
