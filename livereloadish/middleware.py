@@ -175,4 +175,11 @@ class LivereloadishMiddleware:
         if content_touched:
             response.content = content
             response["Content-Length"] = len(response.content)
+            # If we injected out HTML, the following will prevent
+            # UpdateCacheMiddleware/FetchFromCacheMiddleware/CacheMiddleware
+            # from handling this response, to avoid issues around middleware
+            # ordering whereby
+            request._cache_update_cache = False
+            if not response.get("Cache-Control", ""):
+                response["Cache-Control"] = "private, no-store"
         return response

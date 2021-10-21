@@ -156,6 +156,19 @@ attributes above or hooks I've put in place, by adding the following meta tags a
 These take absolute precedence over any defaults, or attributes defined on any relevant elements.
 These meta tags are the first thing checked when a file is changed, and everything else is subsequently ignored if they're found (ie: it's a short-circuit operation).
 
+Caching & Middleware
+^^^^^^^^^^^^^^^^^^^^
+
+When `LivereloadishMiddleware` is enabled and injects itself into the HTML response, it will
+prevent those responses from being cached by `django.middleware.cache.UpdateCacheMiddleware`
+to avoid issues around middleware ordering, and potential injection of the HTML bits into
+cached content which itself already included those same injected bits. As it won't be
+enabled in production, this is fine.
+
+If for whatever reason the frontend JavaScript detects there are multiple occurances
+in the HTML response, it will prevent itself from continuing and output an error to the
+devtools console.
+
 Status
 ------
 

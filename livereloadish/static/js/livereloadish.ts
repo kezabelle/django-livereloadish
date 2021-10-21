@@ -1146,9 +1146,9 @@
      * Your basic setup of event source + various event listeners.
      */
     const livereloadishSetup = (): void => {
-        const includer: HTMLScriptElement | null = document.querySelector("script[data-livereloadish-url]");
-        if (includer !== null) {
-            const livereloadishUrl = includer.dataset.livereloadishUrl;
+        const includer: NodeListOf<HTMLElement> = document.querySelectorAll("script[data-livereloadish-url]");
+        if (includer.length === 1) {
+            const livereloadishUrl = includer[0].dataset.livereloadishUrl ?? "";
             if (livereloadishUrl) {
                 const jsLoad = new Date().getTime() / 1000;
                 evtSource = new EventSource(livereloadishUrl.replace('js_load=0', `js_load=${jsLoad}`));
@@ -1161,8 +1161,10 @@
                 window.addEventListener('pagehide', livereloadishTeardown);
                 document.addEventListener('visibilitychange', switchStrategies);
             } else {
-                console.error(logPrefix, logFmt, `Included without an empty value in the data-livereloadish-url="" attribute, cannot continue`);
+                console.error(logPrefix, logFmt, `Included with an empty value in the data-livereloadish-url="" attribute, cannot continue`);
             }
+        } else if (includer.length > 1) {
+            console.error(logPrefix, logFmt, `Multiple data-livereloadish-url="..." elements found, possible middleware order issue; you maybe have UpdateCacheMiddleware (or an equivalent) listed before the LivereloadishMiddleware`);
         } else {
             console.error(logPrefix, logFmt, `Included without a data-livereloadish-url="..." attribute, cannot continue`);
         }
