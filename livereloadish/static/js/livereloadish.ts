@@ -383,6 +383,12 @@
             const serializedFormState = sessionStorage.getItem(this.dataKey);
             if (serializedFormState !== null) {
                 const values: Record<string, ["checked" | "value" | "selected", string | boolean]> = JSON.parse(serializedFormState);
+                const event = new CustomEvent('change', {
+                    detail: null,
+                    bubbles: true,
+                    cancelable: false,
+                    composed: false,
+                });
                 for (const key in values) {
                     if (values.hasOwnProperty(key)) {
                         const [attrib, value] = values[key];
@@ -397,21 +403,18 @@
                                 case "checked":
                                     if ("checked" in element && element.checked === false) {
                                         element.checked = true;
-                                        const event = new Event('change');
                                         element.dispatchEvent(event);
                                     }
                                     break;
                                 case "selected":
                                     if ("selected" in element && element.selected === false) {
                                         element.selected = true;
-                                        const event = new Event('change');
                                         element.dispatchEvent(event);
                                     }
                                     break;
                                 case "value":
                                     if (element.value !== value.toString()) {
                                         element.value = value.toString();
-                                        const event = new Event('change');
                                         element.dispatchEvent(event);
                                     }
                                     break;

@@ -297,6 +297,12 @@
             var serializedFormState = sessionStorage.getItem(this.dataKey);
             if (serializedFormState !== null) {
                 var values = JSON.parse(serializedFormState);
+                var event_1 = new CustomEvent('change', {
+                    detail: null,
+                    bubbles: true,
+                    cancelable: false,
+                    composed: false,
+                });
                 for (var key in values) {
                     if (values.hasOwnProperty(key)) {
                         var _a = values[key], attrib = _a[0], value = _a[1];
@@ -311,22 +317,19 @@
                                 case "checked":
                                     if ("checked" in element && element.checked === false) {
                                         element.checked = true;
-                                        var event_1 = new Event('change');
                                         element.dispatchEvent(event_1);
                                     }
                                     break;
                                 case "selected":
                                     if ("selected" in element && element.selected === false) {
                                         element.selected = true;
-                                        var event_2 = new Event('change');
-                                        element.dispatchEvent(event_2);
+                                        element.dispatchEvent(event_1);
                                     }
                                     break;
                                 case "value":
                                     if (element.value !== value.toString()) {
                                         element.value = value.toString();
-                                        var event_3 = new Event('change');
-                                        element.dispatchEvent(event_3);
+                                        element.dispatchEvent(event_1);
                                     }
                                     break;
                                 default:
