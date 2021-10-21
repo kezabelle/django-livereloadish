@@ -4,6 +4,8 @@ from django.views.decorators.gzip import gzip_page
 
 from .views import sse, stats, js
 
+__all__ = ["urlpatterns"]
+
 urlpatterns = [
     re_path(
         "watcher/livereloadish\.(?P<extension>js.map|js|ts|d.ts)",

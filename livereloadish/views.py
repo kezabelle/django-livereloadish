@@ -29,6 +29,7 @@ from django.views import static, View
 
 from livereloadish import LiveReloadishConfig
 
+__all__ = ["logger", "js", "SSEView", "sse", "stats"]
 logger = logging.getLogger(__name__)
 
 

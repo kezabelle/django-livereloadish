@@ -25,6 +25,7 @@ from livereloadish.patches import (
     do_patch_template_compile_nodelist,
 )
 
+__all__ = ["logger", "Seen", "LiveReloadishConfig"]
 logger = logging.getLogger(__name__)
 
 

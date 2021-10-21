@@ -14,6 +14,7 @@ from django.urls import include, path
 
 from .urls import urlpatterns as livereloadish_urlpatterns
 
+__all__ = ["logger", "NamedUrlconf", "LivereloadishMiddleware"]
 logger = logging.getLogger(__name__)
 
 

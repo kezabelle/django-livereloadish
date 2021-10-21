@@ -30,7 +30,15 @@ original_staticnode_url = StaticNode.url
 original_extendsnode_get_parent = ExtendsNode.get_parent
 original_filesystemstorage_url = FileSystemStorage.url
 
-
+__all__ = [
+    "logger",
+    "do_patch_static_serve",
+    "do_patch_template_compile_nodelist",
+    "do_patch_engine_find_template",
+    "do_patch_staticnode_url",
+    "do_patch_extendsnode_get_parent",
+    "do_patch_filesystemstorage_url",
+]
 if ".map" not in mimetypes.suffix_map:
     mimetypes.suffix_map[".map"] = ".json"
 
