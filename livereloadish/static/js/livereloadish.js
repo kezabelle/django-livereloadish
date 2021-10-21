@@ -139,6 +139,7 @@
     var logJS = logPrefix + ": JS";
     var logIMG = logPrefix + ": Image";
     var logPage = logPrefix + ": Page";
+    var logState = logPrefix + ": State";
     var logQueue = logPrefix + ": Queue";
     /**
      * Wraps over a `URL` to provide mutation free adding of our cache-busting
@@ -182,10 +183,220 @@
         };
         return RelativeUrl;
     }());
-    var saveFormState = function () {
-    };
-    var restoreFormState = function () {
-    };
+    var LivereloadishPageState = /** @class */ (function () {
+        function LivereloadishPageState(key) {
+            this.dataKey = "forms_for_" + key;
+            this.scrollKey = "scrolls_for_" + key;
+            this.focusKey = "focus_for_" + key;
+        }
+        LivereloadishPageState.prototype.saveForm = function () {
+            var formElements = Array.prototype.slice.call(document.querySelectorAll('input, select, textarea'));
+            var formValues = {};
+            for (var _a = 0, formElements_1 = formElements; _a < formElements_1.length; _a++) {
+                var element = formElements_1[_a];
+                var tagName = element.tagName.toLowerCase();
+                var name_1 = element.name;
+                var formSelector = "";
+                if (element.form) {
+                    formSelector += "form";
+                    if (element.form.name) {
+                        formSelector += "[name=" + element.form.name + "]";
+                    }
+                }
+                switch (tagName) {
+                    case "input":
+                        var subType = element.type;
+                        if (subType === "checkbox" || subType === "radio") {
+                            if (element.checked === true) {
+                                formValues[formSelector + " input[name=\"" + name_1 + "\"][value=\"" + element.value + "\"]"] = ["checked", element.checked];
+                            }
+                        }
+                        else if (element.value.trim()) {
+                            formValues[formSelector + " input[name=\"" + name_1 + "\"]"] = ["value", element.value];
+                        }
+                        break;
+                    case "select":
+                        var selectedOptions = Array.prototype.slice.call(element.selectedOptions);
+                        for (var _b = 0, selectedOptions_1 = selectedOptions; _b < selectedOptions_1.length; _b++) {
+                            var selectedOption = selectedOptions_1[_b];
+                            if (element.value.trim()) {
+                                formValues[formSelector + " select[name=\"" + name_1 + "\"] option[value=\"" + selectedOption.value + "\"]"] = ["selected", element.value];
+                            }
+                        }
+                        break;
+                    case "textarea":
+                        if (element.value.trim()) {
+                            formValues[formSelector + " textarea[name=\"" + name_1 + "\"]"] = ["value", element.value];
+                        }
+                        break;
+                    default:
+                        (function (x) {
+                            throw new Error(x + " was unhandled!");
+                        })(tagName);
+                }
+            }
+            var serializedFormState = JSON.stringify(formValues);
+            if (Object.keys(formValues).length > 0) {
+                sessionStorage.setItem(this.dataKey, serializedFormState);
+            }
+            else {
+                // There's nothing to persist, let's also make sure we tidy out
+                // any stragglers.
+                sessionStorage.removeItem(this.dataKey);
+            }
+            return [formValues, serializedFormState];
+        };
+        LivereloadishPageState.prototype.saveScroll = function () {
+            var scrollPos = { "x": window.scrollX, "y": window.scrollY };
+            var serializedScrollState = JSON.stringify(scrollPos);
+            if (window.scrollX !== 0 || window.scrollY !== 0) {
+                sessionStorage.setItem(this.scrollKey, serializedScrollState);
+            }
+            else {
+                // There's nothing to persist, let's also make sure we tidy out
+                // any stragglers.
+                sessionStorage.removeItem(this.scrollKey);
+            }
+            return [scrollPos, serializedScrollState];
+        };
+        LivereloadishPageState.prototype.saveActiveElement = function () {
+            if (document.activeElement) {
+                var tagName = document.activeElement.tagName.toLowerCase();
+                var id = document.activeElement.id;
+                var classes = document.activeElement.className;
+                var identifier = document.activeElement.id;
+                if (identifier) {
+                    identifier = "#" + identifier;
+                }
+                else {
+                    identifier = document.activeElement.className.replace(/\s+/g, ' ').replace(/\s/g, '.');
+                    if (identifier.charAt(0) !== '.') {
+                        identifier = "." + identifier;
+                    }
+                }
+                var selector = "" + tagName + identifier;
+                if (selector !== tagName) {
+                    sessionStorage.setItem(this.focusKey, selector);
+                }
+                else {
+                    // There's nothing to persist, let's also make sure we tidy out
+                    // any stragglers.
+                    sessionStorage.removeItem(this.focusKey);
+                }
+                return [tagName, id, classes, selector];
+            }
+            return ["", "", "", ""];
+        };
+        LivereloadishPageState.prototype.save = function () {
+            var _a = this.saveForm(), formValues = _a[0], serializedFormState = _a[1];
+            var _b = this.saveScroll(), scrollPos = _b[0], serializedScrollState = _b[1];
+            var _c = this.saveActiveElement(), focusSelector = _c[3];
+            return [formValues, serializedFormState, scrollPos, serializedScrollState, focusSelector];
+        };
+        LivereloadishPageState.prototype.restoreForm = function () {
+            var serializedFormState = sessionStorage.getItem(this.dataKey);
+            if (serializedFormState !== null) {
+                var values = JSON.parse(serializedFormState);
+                for (var key in values) {
+                    if (values.hasOwnProperty(key)) {
+                        var _a = values[key], attrib = _a[0], value = _a[1];
+                        var element = document.querySelector(key);
+                        if (element) {
+                            console.debug(logState, logFmt, "Restoring value for " + key);
+                            // This is assuming that the types haven't changed in the reload
+                            // though they can do so. e.g: a CheckboxSelectMultiple may become
+                            // a SelectMultiple or whatever. I'm not validating it too deeply;
+                            // it either works or it doesn't.
+                            switch (attrib) {
+                                case "checked":
+                                    if ("checked" in element && element.checked === false) {
+                                        element.checked = true;
+                                        var event_1 = new Event('change');
+                                        element.dispatchEvent(event_1);
+                                    }
+                                    break;
+                                case "selected":
+                                    if ("selected" in element && element.selected === false) {
+                                        element.selected = true;
+                                        var event_2 = new Event('change');
+                                        element.dispatchEvent(event_2);
+                                    }
+                                    break;
+                                case "value":
+                                    if (element.value !== value.toString()) {
+                                        element.value = value.toString();
+                                        var event_3 = new Event('change');
+                                        element.dispatchEvent(event_3);
+                                    }
+                                    break;
+                                default:
+                                    (function (x) {
+                                        throw new Error(x + " was unhandled!");
+                                    })(attrib);
+                            }
+                        }
+                    }
+                }
+                sessionStorage.removeItem(this.dataKey);
+            }
+            return serializedFormState !== null;
+        };
+        LivereloadishPageState.prototype.restoreScroll = function () {
+            var serializedScrollState = sessionStorage.getItem(this.scrollKey);
+            if (serializedScrollState !== null) {
+                var scrollPos = JSON.parse(serializedScrollState);
+                console.debug(logState, logFmt, "Restoring scroll position to vertical: " + scrollPos.y + ", horizontal: " + scrollPos.x);
+                window.scrollTo(scrollPos.x, scrollPos.y);
+                sessionStorage.removeItem(this.scrollKey);
+            }
+            return serializedScrollState !== null;
+        };
+        LivereloadishPageState.prototype.restoreActiveElement = function () {
+            var selector = sessionStorage.getItem(this.focusKey);
+            if (selector !== null) {
+                var elements = document.querySelectorAll(selector);
+                var elementCount = elements.length;
+                if (elementCount === 1) {
+                    elements[0].focus();
+                    console.debug(logState, logFmt, "Restoring focus to \"" + selector + "\"");
+                }
+                else if (elementCount > 1) {
+                    console.debug(logState, logFmt, "Cannot restore focus to \"" + selector + "\", multiple elements match");
+                }
+                else {
+                    console.debug(logState, logFmt, "Cannot restore focus to \"" + selector + "\", no elements match");
+                }
+                sessionStorage.removeItem(this.focusKey);
+            }
+            return selector !== null;
+        };
+        LivereloadishPageState.prototype.restore = function () {
+            var restoredForm = this.restoreForm();
+            var restoredScroll = this.restoreScroll();
+            var restoredFocus = this.restoreActiveElement();
+            return restoredForm || restoredScroll || restoredFocus;
+        };
+        LivereloadishPageState.bindForRefresh = function () {
+            if (/^(loaded|complete|interactive)$/.test(document.readyState)) {
+                LivereloadishPageState.restoreAfterRefresh.call(document);
+            }
+            else {
+                document.addEventListener('DOMContentLoaded', LivereloadishPageState.restoreAfterRefresh);
+                document.addEventListener('load', LivereloadishPageState.restoreAfterRefresh);
+            }
+        };
+        /**
+         * Essentially, .once(). If a page has to do a full reload, still try and restore
+         * the values and then unbind.
+         */
+        LivereloadishPageState.restoreAfterRefresh = function () {
+            var instance = new LivereloadishPageState(window.location.toString());
+            instance.restore();
+            document.removeEventListener('load', LivereloadishPageState.restoreAfterRefresh);
+            document.removeEventListener('DOMContentLoaded', LivereloadishPageState.restoreAfterRefresh);
+        };
+        return LivereloadishPageState;
+    }());
     /**
      * Replace an included CSS file (<link rel="stylesheet" href="...">).
      * Creates a new file with all the same attributes and a new querystring to
@@ -202,8 +413,8 @@
             var originalHref_1 = new RelativeUrl(link.href, origin);
             var newLink = document.createElement("link");
             for (var i = 0; i < link.attributes.length; i++) {
-                var _b = link.attributes[i], name_1 = _b.name, value = _b.value;
-                newLink.setAttribute(name_1, value);
+                var _b = link.attributes[i], name_2 = _b.name, value = _b.value;
+                newLink.setAttribute(name_2, value);
             }
             var newHref_1 = originalHref_1.changeLivereloadishValue(mtime).toString();
             newLink.href = newHref_1;
@@ -238,8 +449,8 @@
             var originalHref_2 = new RelativeUrl(script.src, origin);
             var newScript = document.createElement("script");
             for (var i = 0; i < script.attributes.length; i++) {
-                var _b = script.attributes[i], name_2 = _b.name, value = _b.value;
-                newScript.setAttribute(name_2, value);
+                var _b = script.attributes[i], name_3 = _b.name, value = _b.value;
+                newScript.setAttribute(name_3, value);
             }
             var newHref_2 = originalHref_2.changeLivereloadishValue(mtime).toString();
             newScript.src = newHref_2;
@@ -440,6 +651,10 @@
                 return;
             }
         }
+        // @ts-ignore
+        var unpoly = window.up, turbolinks = window.Turbolinks, Swup = window.Swup, swupInstance = window.swup, url = window.location;
+        var pageState = new LivereloadishPageState(url.toString());
+        pageState.save();
         var definitelyRequiresReload = msg.info.requires_full_reload;
         if (definitelyRequiresReload) {
             console.debug(logPage, logFmt, "Server suggested that this must do a full reload, because " + file + " changed");
@@ -459,15 +674,12 @@
             console.debug(logPage, logFmt, "Meta tag value \"" + documentReloadValue + "\" suggested that this must do a full reload, because " + file + " changed");
             return refreshStrategy(msg);
         }
-        var currentScrollY = window.scrollY;
-        // @ts-ignore
-        var unpoly = window.up, turbolinks = window.Turbolinks, Swup = window.Swup, swupInstance = window.swup, url = window.location;
         if ((documentReloadStyle === "unpoly" || documentReloadStyle === "auto") && (unpoly && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.version) && (unpoly === null || unpoly === void 0 ? void 0 : unpoly.reload))) {
             console.debug(logPage, logFmt, "I think this is an Unpoly (https://unpoly.com/) page");
             console.debug(logPage, logFmt, "Reloading the root fragment vis up.reload(...), because " + file + " changed");
             unpoly.reload({ navigate: true, cache: false })
                 .then(function (_renderResult) {
-                window.scrollTo(0, currentScrollY);
+                pageState.restore();
                 checkSeenTemplatesUpdated(seenTemplatesAt);
             })
                 .catch(function (_renderResult) {
@@ -482,7 +694,7 @@
             console.debug(logPage, logFmt, "I think this is a Turbolinks (https://github.com/turbolinks/turbolinks) page");
             console.debug(logPage, logFmt, "Reloading the content via Turbolinks.visit(), because " + file + " changed");
             turbolinks.visit(url.toString());
-            window.scrollTo(0, currentScrollY);
+            pageState.restore();
             checkSeenTemplatesUpdated(seenTemplatesAt);
         }
         else if (Swup) {
@@ -493,7 +705,7 @@
                     'url': url.pathname + url.search,
                 });
                 swupInstance.on("pageView", function () {
-                    window.scrollTo(0, currentScrollY);
+                    pageState.restore();
                     checkSeenTemplatesUpdated(seenTemplatesAt);
                 });
             }
@@ -529,7 +741,7 @@
                     console.debug(logPage, logFmt, "Updated the document title, because " + file + " changed");
                     document.title = fragment.title;
                 }
-                window.scrollTo(0, currentScrollY);
+                pageState.restore();
                 checkSeenTemplatesUpdated(seenTemplatesAt);
             }).catch(function (_err) {
                 console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");
@@ -919,5 +1131,6 @@
         console.debug(logPrefix, logFmt, "Awaiting DOM-Ready event");
         document.addEventListener('DOMContentLoaded', livereloadishSetup);
     }
+    LivereloadishPageState.bindForRefresh();
 })();
 //# sourceMappingURL=livereloadish.js.map

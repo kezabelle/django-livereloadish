@@ -217,6 +217,7 @@
     const logJS = logPrefix + `: JS`;
     const logIMG = logPrefix + `: Image`;
     const logPage = logPrefix + `: Page`;
+    const logState = logPrefix + `: State`;
     const logQueue = logPrefix + `: Queue`;
 
     /**
@@ -265,12 +266,224 @@
         }
     }
 
-    const saveFormState = () => {
+    class LivereloadishPageState {
+        public dataKey: string;
+        public scrollKey: string;
+        public focusKey: string;
+        constructor(key: string) {
+            this.dataKey = `forms_for_${key}`;
+            this.scrollKey = `scrolls_for_${key}`;
+            this.focusKey = `focus_for_${key}`;
+        }
 
-    }
+        saveForm() {
+            const formElements: Array<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = Array.prototype.slice.call(document.querySelectorAll('input, select, textarea'));
+            const formValues: Record<string, ["checked" | "value" | "selected", string | boolean]> = {};
+            for (const element of formElements) {
+                const tagName = element.tagName.toLowerCase() as  "input" | "select" | "textarea";
+                const name = element.name;
 
-    const restoreFormState = () => {
+                let formSelector = "";
+                if (element.form) {
+                    formSelector += "form";
+                    if (element.form.name) {
+                        formSelector += `[name=${element.form.name}]`;
+                    }
+                }
 
+                switch (tagName) {
+                    case "input":
+                        const subType = (element as HTMLInputElement).type;
+                        if (subType === "checkbox" || subType === "radio") {
+                            if ((element as HTMLInputElement).checked === true) {
+                                formValues[`${formSelector} input[name="${name}"][value="${element.value}"]`] = ["checked", (element as HTMLInputElement).checked];
+                            }
+                        } else if (element.value.trim()) {
+                            formValues[`${formSelector} input[name="${name}"]`] = ["value", element.value];
+                        }
+                        break;
+                    case "select":
+                        const selectedOptions: HTMLOptionElement[] = Array.prototype.slice.call((element as HTMLSelectElement).selectedOptions);
+                        for (const selectedOption of selectedOptions) {
+                            if (element.value.trim()) {
+                                formValues[`${formSelector} select[name="${name}"] option[value="${selectedOption.value}"]`] = ["selected", element.value];
+                            }
+                        }
+                        break;
+                    case "textarea":
+                        if (element.value.trim()) {
+                            formValues[`${formSelector} textarea[name="${name}"]`] = ["value", element.value];
+                        }
+                        break;
+                    default:
+                        ((x: never) => {
+                            throw new Error(`${x} was unhandled!`);
+                        })(tagName);
+                }
+            }
+            const serializedFormState = JSON.stringify(formValues);
+            if (Object.keys(formValues).length > 0) {
+                sessionStorage.setItem(this.dataKey, serializedFormState);
+            } else {
+                // There's nothing to persist, let's also make sure we tidy out
+                // any stragglers.
+                sessionStorage.removeItem(this.dataKey);
+            }
+            return [formValues, serializedFormState];
+        }
+
+        saveScroll() {
+            const scrollPos = {"x": window.scrollX, "y" :window.scrollY};
+            const serializedScrollState = JSON.stringify(scrollPos);
+            if (window.scrollX !== 0 || window.scrollY !== 0) {
+                sessionStorage.setItem(this.scrollKey, serializedScrollState);
+            } else {
+                // There's nothing to persist, let's also make sure we tidy out
+                // any stragglers.
+                sessionStorage.removeItem(this.scrollKey);
+            }
+            return [scrollPos, serializedScrollState]
+        }
+
+        saveActiveElement() {
+            if (document.activeElement) {
+                const tagName = document.activeElement.tagName.toLowerCase();
+                const id = document.activeElement.id;
+                const classes = document.activeElement.className;
+                let identifier = document.activeElement.id;
+                if (identifier) {
+                    identifier = `#${identifier}`;
+                } else {
+                    identifier = document.activeElement.className.replace(/\s+/g, ' ').replace(/\s/g, '.');
+                    if (identifier.charAt(0) !== '.') {
+                        identifier = `.${identifier}`;
+                    }
+                }
+                const selector = `${tagName}${identifier}`;
+                if (selector !== tagName) {
+                    sessionStorage.setItem(this.focusKey, selector);
+                } else {
+                    // There's nothing to persist, let's also make sure we tidy out
+                    // any stragglers.
+                    sessionStorage.removeItem(this.focusKey);
+                }
+                return [tagName, id, classes, selector]
+            }
+            return ["", "", "", ""]
+        }
+
+        save() {
+            const [formValues, serializedFormState] = this.saveForm();
+            const [scrollPos, serializedScrollState] = this.saveScroll();
+            const [, , , focusSelector] = this.saveActiveElement();
+            return [formValues, serializedFormState, scrollPos, serializedScrollState, focusSelector];
+        }
+
+        restoreForm() {
+            const serializedFormState = sessionStorage.getItem(this.dataKey);
+            if (serializedFormState !== null) {
+                const values: Record<string, ["checked" | "value" | "selected", string | boolean]> = JSON.parse(serializedFormState);
+                for (const key in values) {
+                    if (values.hasOwnProperty(key)) {
+                        const [attrib, value] = values[key];
+                        const element: HTMLInputElement | HTMLOptionElement | HTMLTextAreaElement | null = document.querySelector(key);
+                        if (element) {
+                            console.debug(logState, logFmt, `Restoring value for ${key}`);
+                            // This is assuming that the types haven't changed in the reload
+                            // though they can do so. e.g: a CheckboxSelectMultiple may become
+                            // a SelectMultiple or whatever. I'm not validating it too deeply;
+                            // it either works or it doesn't.
+                            switch (attrib) {
+                                case "checked":
+                                    if ("checked" in element && element.checked === false) {
+                                        element.checked = true;
+                                        const event = new Event('change');
+                                        element.dispatchEvent(event);
+                                    }
+                                    break;
+                                case "selected":
+                                    if ("selected" in element && element.selected === false) {
+                                        element.selected = true;
+                                        const event = new Event('change');
+                                        element.dispatchEvent(event);
+                                    }
+                                    break;
+                                case "value":
+                                    if (element.value !== value.toString()) {
+                                        element.value = value.toString();
+                                        const event = new Event('change');
+                                        element.dispatchEvent(event);
+                                    }
+                                    break;
+                                default:
+                                    ((x: never) => {
+                                        throw new Error(`${x} was unhandled!`);
+                                    })(attrib);
+                            }
+                        }
+                    }
+                }
+                sessionStorage.removeItem(this.dataKey);
+            }
+            return serializedFormState !== null;
+        }
+
+        restoreScroll() {
+            const serializedScrollState = sessionStorage.getItem(this.scrollKey);
+            if (serializedScrollState !== null) {
+                const scrollPos = JSON.parse(serializedScrollState);
+                console.debug(logState, logFmt, `Restoring scroll position to vertical: ${scrollPos.y}, horizontal: ${scrollPos.x}`);
+                window.scrollTo(scrollPos.x, scrollPos.y);
+                sessionStorage.removeItem(this.scrollKey);
+            }
+
+            return serializedScrollState !== null;
+        }
+
+        restoreActiveElement() {
+            const selector = sessionStorage.getItem(this.focusKey);
+            if (selector !== null) {
+                const elements = document.querySelectorAll(selector);
+                const elementCount = elements.length;
+                if (elementCount === 1) {
+                    (elements[0] as HTMLElement).focus();
+                    console.debug(logState, logFmt, `Restoring focus to "${selector}"`);
+                } else if (elementCount > 1) {
+                    console.debug(logState, logFmt, `Cannot restore focus to "${selector}", multiple elements match`);
+                } else {
+                    console.debug(logState, logFmt, `Cannot restore focus to "${selector}", no elements match`);
+                }
+                sessionStorage.removeItem(this.focusKey);
+            }
+            return selector !== null;
+        }
+
+        restore() {
+            const restoredForm = this.restoreForm();
+            const restoredScroll = this.restoreScroll();
+            const restoredFocus = this.restoreActiveElement();
+            return restoredForm || restoredScroll || restoredFocus;
+        }
+
+        static bindForRefresh() {
+            if (/^(loaded|complete|interactive)$/.test(document.readyState)) {
+                LivereloadishPageState.restoreAfterRefresh.call(document);
+            } else {
+                document.addEventListener('DOMContentLoaded', LivereloadishPageState.restoreAfterRefresh);
+                document.addEventListener('load', LivereloadishPageState.restoreAfterRefresh);
+            }
+        }
+
+        /**
+         * Essentially, .once(). If a page has to do a full reload, still try and restore
+         * the values and then unbind.
+         */
+        static restoreAfterRefresh() {
+            const instance = new LivereloadishPageState(window.location.toString());
+            instance.restore();
+            document.removeEventListener('load', LivereloadishPageState.restoreAfterRefresh);
+            document.removeEventListener('DOMContentLoaded', LivereloadishPageState.restoreAfterRefresh);
+        }
     }
 
     /**
@@ -526,6 +739,12 @@
                 return;
             }
         }
+
+        // @ts-ignore
+        const {up: unpoly, Turbolinks: turbolinks, Swup: Swup, swup: swupInstance, location: url} = window;
+        const pageState = new LivereloadishPageState(url.toString());
+        pageState.save();
+
         const definitelyRequiresReload = msg.info.requires_full_reload;
         if (definitelyRequiresReload) {
             console.debug(logPage, logFmt, `Server suggested that this must do a full reload, because ${file} changed`);
@@ -545,15 +764,12 @@
             console.debug(logPage, logFmt, `Meta tag value "${documentReloadValue}" suggested that this must do a full reload, because ${file} changed`);
             return refreshStrategy(msg);
         }
-        const currentScrollY = window.scrollY;
-        // @ts-ignore
-        const {up: unpoly, Turbolinks: turbolinks, Swup: Swup, swup: swupInstance, location: url} = window;
         if ((documentReloadStyle === "unpoly" || documentReloadStyle === "auto") && (unpoly && unpoly?.version && unpoly?.reload)) {
             console.debug(logPage, logFmt, `I think this is an Unpoly (https://unpoly.com/) page`);
             console.debug(logPage, logFmt, `Reloading the root fragment vis up.reload(...), because ${file} changed`);
             unpoly.reload({navigate: true, cache: false})
                 .then((_renderResult: any) => {
-                    window.scrollTo(0, currentScrollY);
+                    pageState.restore();
                     checkSeenTemplatesUpdated(seenTemplatesAt);
                 })
                 .catch((_renderResult: any) => {
@@ -567,7 +783,7 @@
             console.debug(logPage, logFmt, `I think this is a Turbolinks (https://github.com/turbolinks/turbolinks) page`);
             console.debug(logPage, logFmt, `Reloading the content via Turbolinks.visit(), because ${file} changed`);
             turbolinks.visit(url.toString());
-            window.scrollTo(0, currentScrollY);
+            pageState.restore();
             checkSeenTemplatesUpdated(seenTemplatesAt);
         } else if (Swup) {
             console.debug(logPage, logFmt, `I think this is a Swup (https://swup.js.org/) page`);
@@ -577,7 +793,7 @@
                     'url': url.pathname + url.search,
                 })
                 swupInstance.on("pageView", () => {
-                    window.scrollTo(0, currentScrollY);
+                    pageState.restore();
                     checkSeenTemplatesUpdated(seenTemplatesAt);
                 });
             } else {
@@ -611,7 +827,7 @@
                     console.debug(logPage, logFmt, `Updated the document title, because ${file} changed`);
                     document.title = fragment.title;
                 }
-                window.scrollTo(0, currentScrollY);
+                pageState.restore();
                 checkSeenTemplatesUpdated(seenTemplatesAt);
             }).catch(function (_err: Error) {
                 console.debug(logPage, logFmt, `An error occurred doing a partial reload because ${file} changed`);
@@ -996,4 +1212,5 @@
         console.debug(logPrefix, logFmt, `Awaiting DOM-Ready event`);
         document.addEventListener('DOMContentLoaded', livereloadishSetup);
     }
+    LivereloadishPageState.bindForRefresh();
 })();
