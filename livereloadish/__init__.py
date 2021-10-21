@@ -1,3 +1,25 @@
+"""
+A reusable Django application which enables Live Reload functionality under
+runserver, without any dependencies on any fancy nodejs or npm shenanigans,
+or indeed ... anything other than Django. Based partially on ideas found
+in phoenix_live_reload and livereload but with an unnecessary amount of
+reinventing the wheel, because why not?
+
+A number of monkeypatches are applied, for things like static files serving and
+templates to track the files loaded and continually monitor them by means of a
+SSE connection. When one of the tracked files is changed, the SSE connection
+notifies some TypeScript (compiled to ES5) on the client, which attempts to
+replace the affected file automatically.
+
+Where possible, the replacement is done without reloading the page, which is the
+magic from phoenix_live_reload and livereload I wanted to emulate. This mostly
+works for CSS files and images (including responsive ones using <picture> or srcset="..."
+but also attempts to do so for idempotent JS, and for HTML templates themselves.
+
+It additionally forces requests going through static files serving to never be
+cached, so you don't need to remember to have your devtools open (though who doesn't)
+and have ticked that tickbox in the network panel.
+"""
 import mimetypes
 import os
 from typing import Optional, Literal
@@ -42,11 +64,11 @@ def watch_file(
 
     appconf: LiveReloadishConfig = django_apps_registry.get_app_config("livereloadish")
     if content_type in appconf.seen:
-    return appconf.add_to_seen(
-        content_type=content_type,
-        relative_path=relative_path,
-        absolute_path=absolute_path,
-        mtime=mtime,
-        requires_full_reload=requires_full_reload,
-    )
+        return appconf.add_to_seen(
+            content_type=content_type,
+            relative_path=relative_path,
+            absolute_path=absolute_path,
+            mtime=mtime,
+            requires_full_reload=requires_full_reload,
+        )
     return False
