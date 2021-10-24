@@ -269,8 +269,8 @@
                     identifier = "#" + identifier;
                 }
                 else {
-                    identifier = document.activeElement.className.replace(/\s+/g, ' ').replace(/\s/g, '.');
-                    if (identifier.charAt(0) !== '.') {
+                    identifier = document.activeElement.className.replace(/\s+/g, ' ').trim().replace(/\s/g, '.').trim();
+                    if (identifier.length > 1 && identifier.charAt(0) !== '.') {
                         identifier = "." + identifier;
                     }
                 }
