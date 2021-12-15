@@ -381,7 +381,7 @@
 
         restoreForm() {
             const serializedFormState = sessionStorage.getItem(this.dataKey);
-            if (serializedFormState !== null) {
+            if (serializedFormState !== null && serializedFormState !== '') {
                 const values: Record<string, ["checked" | "value" | "selected", string | boolean]> = JSON.parse(serializedFormState);
                 const event = new CustomEvent('change', {
                     detail: null,
@@ -433,7 +433,7 @@
 
         restoreScroll() {
             const serializedScrollState = sessionStorage.getItem(this.scrollKey);
-            if (serializedScrollState !== null) {
+            if (serializedScrollState !== null && serializedScrollState !== '') {
                 const scrollPos = JSON.parse(serializedScrollState);
                 console.debug(logState, logFmt, `Restoring scroll position to vertical: ${scrollPos.y}, horizontal: ${scrollPos.x}`);
                 window.scrollTo(scrollPos.x, scrollPos.y);
@@ -445,7 +445,7 @@
 
         restoreActiveElement() {
             const selector = sessionStorage.getItem(this.focusKey);
-            if (selector !== null) {
+            if (selector !== null && selector !== '') {
                 const elements = document.querySelectorAll(selector);
                 const elementCount = elements.length;
                 if (elementCount === 1) {

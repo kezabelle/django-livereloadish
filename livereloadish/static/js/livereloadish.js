@@ -295,7 +295,7 @@
         };
         LivereloadishPageState.prototype.restoreForm = function () {
             var serializedFormState = sessionStorage.getItem(this.dataKey);
-            if (serializedFormState !== null) {
+            if (serializedFormState !== null && serializedFormState !== '') {
                 var values = JSON.parse(serializedFormState);
                 var event_1 = new CustomEvent('change', {
                     detail: null,
@@ -346,7 +346,7 @@
         };
         LivereloadishPageState.prototype.restoreScroll = function () {
             var serializedScrollState = sessionStorage.getItem(this.scrollKey);
-            if (serializedScrollState !== null) {
+            if (serializedScrollState !== null && serializedScrollState !== '') {
                 var scrollPos = JSON.parse(serializedScrollState);
                 console.debug(logState, logFmt, "Restoring scroll position to vertical: " + scrollPos.y + ", horizontal: " + scrollPos.x);
                 window.scrollTo(scrollPos.x, scrollPos.y);
@@ -356,7 +356,7 @@
         };
         LivereloadishPageState.prototype.restoreActiveElement = function () {
             var selector = sessionStorage.getItem(this.focusKey);
-            if (selector !== null) {
+            if (selector !== null && selector !== '') {
                 var elements = document.querySelectorAll(selector);
                 var elementCount = elements.length;
                 if (elementCount === 1) {
