@@ -744,6 +744,22 @@
                     console.debug(logPage, logFmt, "Updated the document title, because " + file + " changed");
                     document.title = fragment.title;
                 }
+                // udomdiff(document.head, Array.prototype.slice.call(document.head.children), Array.prototype.slice.call(fragment.head.children), (o: any) => o, null);
+                // Update any <style> elements in the head, in case they've changed.
+                // May cause a FOUC. May need to be hoisted to a separate function to
+                // allow swup/unpoly/turbolinks support, if possible?
+                var newHeadStyles = Array.prototype.slice.call(fragment.querySelectorAll("head style"));
+                var previousHeadStyles = Array.prototype.slice.call(document.querySelectorAll("head style"));
+                if (previousHeadStyles.length > 0 || newHeadStyles.length > 0) {
+                    for (var _a = 0, newHeadStyles_1 = newHeadStyles; _a < newHeadStyles_1.length; _a++) {
+                        var headStyle = newHeadStyles_1[_a];
+                        document.head.appendChild(headStyle);
+                    }
+                    for (var _b = 0, previousHeadStyles_1 = previousHeadStyles; _b < previousHeadStyles_1.length; _b++) {
+                        var headStyle = previousHeadStyles_1[_b];
+                        document.head.removeChild(headStyle);
+                    }
+                }
                 pageState.restore();
                 checkSeenTemplatesUpdated(seenTemplatesAt);
             }).catch(function (_err) {
