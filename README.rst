@@ -79,6 +79,35 @@ For any requests you make which return an HTML response, you should have some Ja
 injected into the end to set the `SSE`_ watcher up, and then you should be free to change
 your CSS/HTML/Images etc as you like.
 
+Watching custom files
+---------------------
+
+There may be occasions where you have additional files used as part of your *view*,
+which don't go through templates or static, but need watching anyway. Perhaps, for example,
+you're rendering a **markdown** file to HTML in then using it as ``{{ content }}`` in your
+template.
+
+To get these extra files tracked, you can use ``livereloadish.watch_file`` like so::
+
+    from livereloadish import watch_file
+
+    def view_markdown_document(request, path):
+        # ...
+        absolute_path = os.path.join(BASE_DIR, 'myfiles', path)
+        watch_file(relative_path=path, absolute_path=absolute_path)
+        # ...
+        return HttpResponse('...')
+
+Currently, ``watch_file`` will only register the file to be tracked if it's a **known**
+supported mime-type, while I figure out the details of whether it'll always require
+a full-reload.
+
+``watch_file`` **requires** the ``relative_path`` and ``absolute_path`` arguments, and
+additionally takes ``content_type``, ``mtime``, and ``requires_full_reload`` as
+*optional* arguments.
+
+``watch_file`` will return ``True`` when it successfully tracks a file, and ``False`` otherwise.
+
 Logging
 -------
 
