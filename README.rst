@@ -209,6 +209,15 @@ testing some of the bits of this, so it's been entirely log-and-eyeballing-drive
 Cards on the table, I'm not likely to write any tests for it either. Perhaps if I find
 bugs which are easily tested, at best.
 
+Alternatives
+------------
+
+Below is a list of Django projects/applications working on similar/overlapping things, in
+the order in which I found them:
+
+* `django-browser-reload`_. At the time of writing, it's decidedly simpler in design, code, and architecture than the monstrous beast which I have wrought; that's probably a good thing.
+
+
 The license
 -----------
 
@@ -227,3 +236,4 @@ It's  `FreeBSD`_. There's should be a ``LICENSE`` file in the root of the reposi
 .. _GitHub repository: https://github.com/kezabelle/django-livereloadish
 .. _django-csp: https://django-csp.readthedocs.io/en/latest/
 .. _FreeBSD: http://en.wikipedia.org/wiki/BSD_licenses#2-clause_license_.28.22Simplified_BSD_License.22_or_.22FreeBSD_License.22.29
+.. _django-browser-reload: https://github.com/adamchainz/django-browser-reload
