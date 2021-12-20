@@ -9,6 +9,24 @@ without any dependencies on any fancy ``nodejs`` or ``npm`` shenanigans, or inde
 anything other than Django. Based partially on ideas found in `phoenix_live_reload`_
 and `livereload`_ but with an unnecessary amount of reinventing the wheel, because why not?
 
+Features
+--------
+
+It's grown somewhat since I  started playing with it, so here's a quick run-down on what it tries to achieve:
+
+* Reload CSS files on-the-fly when changed (partial reload)
+* Reload image files on-the-fly when changed (partial reload)
+* Reload current URL when templates (specifically those tied to the page's rendering) change (partial reload of ``<body>`` using `udomdiff`_ by default, 1-line of config to change to full page reloads)
+* Reload the current URL when external JS ``<script src="...">`` elements change (full reload)
+* Reload the current URL when an included Markdown file is changed (full reload)
+* Tracks only the files seen during the request + previous requests
+* Prompts the user to do a reload if a file is deleted, or the changed file doesn't appear to be for the current page (Prompts which are rejected won't prompt again)
+* Reconnects after ``runserver`` restarts
+* Saves scroll position, form values and focused elements and restores them after a page reload
+* Defers all reload activities if the browser tab is not active
+* Attempts to support things like Turbolinks/Unpoly/Swup transparently (*YMMV, please open a ticket for issues*)
+* Cache-busts all static asset requests to ensure fresh reloads
+
 How it works
 ------------
 
@@ -237,3 +255,4 @@ It's  `FreeBSD`_. There's should be a ``LICENSE`` file in the root of the reposi
 .. _django-csp: https://django-csp.readthedocs.io/en/latest/
 .. _FreeBSD: http://en.wikipedia.org/wiki/BSD_licenses#2-clause_license_.28.22Simplified_BSD_License.22_or_.22FreeBSD_License.22.29
 .. _django-browser-reload: https://github.com/adamchainz/django-browser-reload
+.. _udomdiff: https://github.com/WebReflection/udomdiff
