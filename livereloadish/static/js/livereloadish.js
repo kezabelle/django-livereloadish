@@ -668,10 +668,10 @@
         var knownReloadOptions = ['auto', 'reload', 'diff', 'unpoly', 'turbolinks', 'swup'];
         var documentReloadStyle;
         if (knownReloadOptions.indexOf(documentReloadValue) === -1) {
-            documentReloadStyle = documentReloadValue;
+            documentReloadStyle = "auto";
         }
         else {
-            documentReloadStyle = "auto";
+            documentReloadStyle = documentReloadValue;
         }
         if (documentReloadStyle === "reload") {
             console.debug(logPage, logFmt, "Meta tag value \"" + documentReloadValue + "\" suggested that this must do a full reload, because " + file + " changed");

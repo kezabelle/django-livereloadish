@@ -759,9 +759,9 @@
         const knownReloadOptions = ['auto', 'reload', 'diff', 'unpoly', 'turbolinks', 'swup'];
         let documentReloadStyle: 'auto' | 'reload' | 'diff' | 'unpoly' | 'turbolinks' | 'swup';
         if (knownReloadOptions.indexOf(documentReloadValue) === -1) {
-            documentReloadStyle = documentReloadValue as 'auto' | 'reload' | 'diff' | 'unpoly' | 'turbolinks' | 'swup';
-        } else {
             documentReloadStyle = "auto";
+        } else {
+            documentReloadStyle = documentReloadValue as 'auto' | 'reload' | 'diff' | 'unpoly' | 'turbolinks' | 'swup';
         }
         if (documentReloadStyle === "reload") {
             console.debug(logPage, logFmt, `Meta tag value "${documentReloadValue}" suggested that this must do a full reload, because ${file} changed`);
