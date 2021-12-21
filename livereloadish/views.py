@@ -1,3 +1,4 @@
+import asyncio
 import atexit
 import json
 import logging
@@ -25,6 +26,7 @@ from django.http import (
     FileResponse,
 )
 from django.template.response import TemplateResponse
+from django.utils.decorators import classonlymethod
 from django.views import static, View
 
 from livereloadish import LiveReloadishConfig
@@ -75,7 +77,13 @@ def js(
 
 
 class SSEView(View):
-    def get(self, request):
+    @classonlymethod
+    def as_view(cls, **initkwargs):
+        view = super().as_view(**initkwargs)
+        view._is_coroutine = asyncio.coroutines._is_coroutine
+        return view
+
+    async def get(self, request):
         if not settings.DEBUG:
             raise Http404("Only available when DEBUG=True")
         try:
@@ -100,7 +108,7 @@ class SSEView(View):
                 "Only available when the livereloadish app is in INSTALLED_APPS"
             )
         return StreamingHttpResponse(
-            streaming_content=self.loop(
+            streaming_content=await self.loop(
                 request=request,
                 reqid=short_req_uuid,
                 last_scan=last_scan,
@@ -109,7 +117,7 @@ class SSEView(View):
             content_type="text/event-stream",
         )
 
-    def loop(self, request, reqid: str, last_scan: float, appconf: LiveReloadishConfig):
+    async def loop(self, request, reqid: str, last_scan: float, appconf: LiveReloadishConfig):
         loop_count = 0
         logger.info(
             "[%s] Livereloadish SSE client connected at %s, starting",
@@ -336,7 +344,7 @@ class SSEView(View):
             # saving & alt-tabbing quickly after refreshing and I don't want to
             # miss a change and then assume it's got stuck and refresh manually again.
             # Sort of defeats the point of livereload if I don't have faith in it working.
-            time.sleep(increment)
+            await asyncio.sleep(increment)
 
 
 sse = SSEView.as_view()

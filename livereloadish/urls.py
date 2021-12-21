@@ -11,6 +11,6 @@ urlpatterns = [
         "watcher/livereloadish\.(?P<extension>js.map|js|ts|d.ts)",
         gzip_page(never_cache(js)),
     ),
-    path("watch/", never_cache(sse)),
+    path("watch/", sse),
     path("stats/", never_cache(stats)),
 ]
