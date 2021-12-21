@@ -4,7 +4,7 @@ django-livereloadish
 :author: Keryn Knight
 :version: 0.1.0
 
-A reusable `Django`_ application which enables *Live Reload* functionality under runserver,
+A reusable `Django`_ application which enables **Live Reload** functionality under runserver,
 without any dependencies on any fancy ``nodejs`` or ``npm`` shenanigans, or indeed ...
 anything other than Django. Based partially on ideas found in `phoenix_live_reload`_
 and `livereload`_ but with an unnecessary amount of reinventing the wheel, because why not?
@@ -12,20 +12,61 @@ and `livereload`_ but with an unnecessary amount of reinventing the wheel, becau
 Features
 --------
 
-It's grown somewhat since I  started playing with it, so here's a quick run-down on what it tries to achieve:
+Here's a quick run-down on what it tries to achieve:
 
-* Reload CSS files on-the-fly when changed (partial reload)
-* Reload image files on-the-fly when changed (partial reload)
-* Reload current URL when templates (specifically those tied to the page's rendering) change (partial reload of ``<body>`` using `udomdiff`_ by default, 1-line of config to change to full page reloads)
-* Reload the current URL when external JS ``<script src="...">`` elements change (full reload)
-* Reload the current URL when an included Markdown file is changed (full reload)
-* Tracks only the files seen during the request + previous requests
-* Prompts the user to do a reload if a file is deleted, or the changed file doesn't appear to be for the current page (Prompts which are rejected won't prompt again)
+* Reload **CSS** files on-the-fly when changed (partial reload)
+* Reload **image** files on-the-fly when changed (partial reload)
+* Reload the **HTML** when **templates** (specifically those tied to the page's rendering) change (partial reload of ``<body>`` by default, 1-line of config to change to full page reloads)
+* Reload the page when **external JS** ``<script src="...">`` elements change (full reload)
+* Reload the page when an included Markdown file is changed (full reload)
+* Tracks *only* the files seen during the request + previous requests
+* If a file is *deleted*, or the changed file doesn't appear to be for *the current page*, prompts the user asking *"Would you like to reload?"* (Prompts which are rejected won't prompt again)
 * Reconnects after ``runserver`` restarts
-* Saves scroll position, form values and focused elements and restores them after a page reload
+* Saves **scroll position**, **form values** and **focused elements** and restores them after a page reload
 * Defers all reload activities if the browser tab is not active
 * Attempts to support things like Turbolinks/Unpoly/Swup transparently (*YMMV, please open a ticket for issues*)
-* Cache-busts all static asset requests to ensure fresh reloads
+* **Cache-busts** all static asset requests to ensure fresh reloads
+
+Installation
+------------
+
+At the moment, you'll just have to pip install the `GitHub repository`_ until I put it on
+PyPI. I think the syntax for that is::
+
+    pip install git+https://github.com/kezabelle/django-livereloadish.git@main#egg=django-livereloadish
+
+To configure your Django project, you'll need to edit your settings (e.g. ``myproject/settings.py``) like so:
+
+
+Adding the application
+^^^^^^^^^^^^^^^^^^^^^^
+
+Update your ``INSTALLED_APPS`` to include the package::
+
+    INSTALLED_APPS = (
+        # other apps here ...
+        'livereloadish.apps.LiveReloadishConfig',
+    )
+
+Enabling the middleware
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Update your ``MIDDLEWARE`` to include the following::
+
+    MIDDLEWARE = (
+        # other apps here ...
+        'livereloadish.middleware.LivereloadishMiddleware',
+    )
+
+Next steps
+^^^^^^^^^^
+
+In theory, that's it. Assuming you're using standard things like class based views, and
+``django.contrib.staticfiles`` everything should hopefully just work.
+
+For any requests you make which return an HTML response, you should have some JavaScript
+injected into the end to set the `SSE`_ watcher up, and then you should be free to change
+your CSS/HTML/Images etc as you like.
 
 How it works
 ------------
@@ -58,26 +99,6 @@ even if that's just `django-pipeline`_ with `rcssmin`_ and `rjsmin`_, and none o
 should have any affect on that.
 
 Perhaps you too are clamouring for the simple life. If it works well, maybe this'll help?
-
-Installation
-------------
-
-At the moment, you'll just have to pip install the `GitHub repository`_ until I put it on
-PyPI. I think the syntax for that is::
-
-    pip install git+https://github.com/kezabelle/django-livereloadish.git@main#egg=django-livereloadish
-
-To actually set it up, edit your `Django`_ settings to:
-
-- add *either* ``livereloadish`` or ``livereloadish.apps.LiveReloadishConfig`` to your ``INSTALLED_APPS``
-- add ``livereloadish.middleware.LivereloadishMiddleware`` to your ``MIDDLEWARE``
-
-In theory, that's it. Assuming you're using standard things like class based views, and
-``django.contrib.staticfiles`` everything should hopefully just work.
-
-For any requests you make which return an HTML response, you should have some JavaScript
-injected into the end to set the `SSE`_ watcher up, and then you should be free to change
-your CSS/HTML/Images etc as you like.
 
 Watching custom files
 ---------------------
@@ -284,4 +305,3 @@ It's  `FreeBSD`_. There's should be a ``LICENSE`` file in the root of the reposi
 .. _django-csp: https://django-csp.readthedocs.io/en/latest/
 .. _FreeBSD: http://en.wikipedia.org/wiki/BSD_licenses#2-clause_license_.28.22Simplified_BSD_License.22_or_.22FreeBSD_License.22.29
 .. _django-browser-reload: https://github.com/adamchainz/django-browser-reload
-.. _udomdiff: https://github.com/WebReflection/udomdiff
