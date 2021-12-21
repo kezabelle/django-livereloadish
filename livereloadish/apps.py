@@ -100,6 +100,7 @@ class LiveReloadishConfig(AppConfig):
     def ready(self) -> bool:
         if not self._should_be_enabled():
             logger.debug("Livereloadish is not applying patches")
+            return False
         logger.info("Livereloadish applying patches for the process")
         return all(
             (
