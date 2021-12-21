@@ -33,26 +33,6 @@ __all__ = ["logger", "js", "SSEView", "sse", "stats"]
 logger = logging.getLogger(__name__)
 
 
-class Timer:
-    __slots__ = ("start", "end")
-
-    def __new__(cls) -> "Timer":
-        instance: "Timer" = super().__new__(cls)
-        instance.start = 0
-        instance.end = 0
-        return instance
-
-    def __enter__(self) -> "Timer":
-        self.start = time.perf_counter_ns()
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.end = time.perf_counter_ns()
-
-    def elapsed(self) -> float:
-        return (self.end - self.start) * 1e-9  # 1e-6
-
-
 def js(
     request: WSGIRequest, extension: str
 ) -> Union[FileResponse, HttpResponseNotAllowed]:
@@ -204,6 +184,9 @@ class SSEView(View):
                     last_scan,
                     extra={"request": request},
                 )
+                # Delete the queue...
+                if reqid in appconf.queues:
+                    del appconf.queues[reqid]
                 break
                 # runserver and Gunicorn both allow using
                 # raise EnvironmentError(ECONNRESET, "Cancelling SSE in the loop")
@@ -212,132 +195,26 @@ class SSEView(View):
 
             loop_count += 1
 
-            min_increment = appconf.sleep_quick
-            if loop_count % 20 == 0:
-                if sensors_battery:
-                    battery_percentage = sensors_battery()
-                    if battery_percentage and battery_percentage.percent <= 50:
-                        min_increment = appconf.sleep_quick * 2
-                yield f'id: {reqid},{last_scan}\nevent: ping\ndata: {{"msg": "keep-alive ping after {loop_count} loops, scanning every {min_increment}s"}}\n\n'
-                logger.info(
-                    "[%s] Livereloadish keep-alive ping, scanning every %ss",
-                    reqid,
-                    min_increment,
-                    extra={"request": request},
-                )
-                appconf.dump_to_lockfile()
+            queue = appconf.queue_for(reqid)
+            
+            # if loop_count % 20 == 0:
+            #     if sensors_battery:
+            #         battery_percentage = sensors_battery()
+            #         if battery_percentage and battery_percentage.percent <= 50:
+            #             min_increment = appconf.sleep_quick * 2
+            #     yield f'id: {reqid},{last_scan}\nevent: ping\ndata: {{"msg": "keep-alive ping after {loop_count} loops, scanning every {min_increment}s"}}\n\n'
+            #     logger.info(
+            #         "[%s] Livereloadish keep-alive ping, scanning every %ss",
+            #         reqid,
+            #         min_increment,
+            #         extra={"request": request},
+            #     )
+            #     appconf.dump_to_lockfile()
 
-            with Timer() as fileiterator:
-                file_count = 0
-                for content_type, files in tuple(appconf.seen.items()):
-                    for key, file in tuple(files.items()):
-                        file_count += 1
-                        # When multiple SSEs are running, each is doing a separate
-                        # scan (yeah not ideal but I also don't care that much and
-                        # don't have more than 2 browsers in play at once so whatever)
-                        # and another scan could trigger a reload in between this
-                        # one's scans, so for it to be picked up we need to track
-                        # when this one last completed and check the mtime against
-                        # that first.
-                        if file.mtime > last_scan:
-                            data = json.dumps(
-                                {
-                                    "msg": "file updated elsewhere",
-                                    "asset_type": content_type,
-                                    "old_time": last_scan,
-                                    "new_time": file.mtime,
-                                    "info": file._asdict(),
-                                }
-                            )
-                            logger.info(
-                                "[%s] Livereloadish change detected between runs in %s",
-                                reqid,
-                                file.relative_path,
-                                extra={"request": request},
-                            )
-                            yield f"id: {reqid},{last_scan}\nevent: assets_change\ndata: {data}\n\n"
-                            continue
-
-                        # If mtime throws an error, the file in question was deleted
-                        # so trigger a reload, otherwise see if it's newer and if it
-                        # is trigger a change request.
-                        try:
-                            new_mtime: float = os.path.getmtime(key)
-                        except FileNotFoundError:
-                            data = json.dumps(
-                                {
-                                    "msg": "file deleted",
-                                    "asset_type": content_type,
-                                    "old_time": file.mtime,
-                                    "new_time": 0,
-                                    "info": file._asdict(),
-                                }
-                            )
-                            logger.info(
-                                "[%s] Livereloadish deletion/move detected for %s",
-                                reqid,
-                                file.relative_path,
-                                extra={"request": request},
-                            )
-                            yield f"id: {reqid},{last_scan}\nevent: assets_delete\ndata: {data}\n\n"
-                            appconf.seen[content_type].pop(key, None)
-                        else:
-                            if new_mtime > file.mtime:
-                                data = json.dumps(
-                                    {
-                                        "msg": "file updated",
-                                        "asset_type": content_type,
-                                        "old_time": file.mtime,
-                                        "new_time": new_mtime,
-                                        "info": file._asdict(),
-                                    }
-                                )
-                                logger.info(
-                                    "[%s] Livereloadish change detected in %s",
-                                    reqid,
-                                    file.relative_path,
-                                    extra={"request": request},
-                                )
-                                yield f"id: {reqid},{last_scan}\nevent: assets_change\ndata: {data}\n\n"
-                                appconf.seen[content_type][key] = file._replace(
-                                    mtime=new_mtime
-                                )
-            last_scan = time.time()
-            scan_duration = fileiterator.elapsed()
-            # Slow down (or stop) the watcher if it starts taking too long...
-            if scan_duration >= min_increment:
-                increment = appconf.sleep_slow
-            elif scan_duration >= appconf.sleep_slow:
-                socket_is_open = False
-                logger.info(
-                    "[%s] Checking mtimes for %s files took too long (%ss), turning off SSE permanently",
-                    reqid,
-                    file_count,
-                    scan_duration,
-                    extra={"request": request},
-                )
+            try:
+                yield queue.get(block=False)
+            except Exception:
                 continue
-            elif file_count == 0:
-                increment = appconf.sleep_slow
-            else:
-                increment = min_increment
-
-            logger.debug(
-                "[%s] Checking mtimes for %s files took %ss, checking again in %ss",
-                reqid,
-                file_count,
-                scan_duration,
-                increment,
-                extra={"request": request},
-            )
-            # Sleep at the end, because on the first iteration it's probably on
-            # page load and there may have been something to change since
-            # page_load/js_load were set. Basically a race condition where I'm
-            # saving & alt-tabbing quickly after refreshing and I don't want to
-            # miss a change and then assume it's got stuck and refresh manually again.
-            # Sort of defeats the point of livereload if I don't have faith in it working.
-            time.sleep(increment)
-
 
 sse = SSEView.as_view()
 

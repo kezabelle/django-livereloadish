@@ -1,13 +1,14 @@
 import logging
 import os
 import pickle
+import threading
 import time
 import pathlib
 from collections import namedtuple
 from datetime import datetime, timezone
 from hashlib import sha1
 from tempfile import gettempdir
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, Any
 
 from asgiref.local import Local
 from django.apps import AppConfig, apps
@@ -49,6 +50,29 @@ class Seen(
             "mtime_iso": self.mtime_as_utc_date().isoformat(),
             "requires_full_reload": self.requires_full_reload,
         }
+
+
+
+
+class Timer:
+    __slots__ = ("start", "end")
+
+    def __new__(cls) -> "Timer":
+        instance: "Timer" = super().__new__(cls)
+        instance.start = 0
+        instance.end = 0
+        return instance
+
+    def __enter__(self) -> "Timer":
+        self.start = time.perf_counter_ns()
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.end = time.perf_counter_ns()
+
+    def elapsed(self) -> float:
+        return (self.end - self.start) * 1e-9  # 1e-6
+
 
 
 class LiveReloadishConfig(AppConfig):
@@ -96,10 +120,13 @@ class LiveReloadishConfig(AppConfig):
     }
     during_request = Local()
     django_reloader: Optional[BaseReloader] = None
+    # Intentionally mutable
+    queues = {}
 
     def ready(self) -> bool:
         if not self._should_be_enabled():
             logger.debug("Livereloadish is not applying patches")
+            return False
         logger.info("Livereloadish applying patches for the process")
         return all(
             (
@@ -110,8 +137,131 @@ class LiveReloadishConfig(AppConfig):
                 do_patch_staticnode_url(),
                 do_patch_extendsnode_get_parent(),
                 self.load_from_lockfile(),
+                self.watch(),
             )
         )
+
+    def watch(self):
+        def watch():
+            import json
+            from uuid import uuid4
+            file_count = 0
+            last_scan = time.time()
+            reqid = uuid4()
+            min_increment = self.sleep_quick
+            while True:
+                with Timer() as fileiterator:
+                    for content_type, files in tuple(self.seen.items()):
+                        for key, file in tuple(files.items()):
+                            file_count += 1
+                            # When multiple SSEs are running, each is doing a separate
+                            # scan (yeah not ideal but I also don't care that much and
+                            # don't have more than 2 browsers in play at once so whatever)
+                            # and another scan could trigger a reload in between this
+                            # one's scans, so for it to be picked up we need to track
+                            # when this one last completed and check the mtime against
+                            # that first.
+                            if file.mtime > last_scan:
+                                data = json.dumps(
+                                    {
+                                        "msg": "file updated elsewhere",
+                                        "asset_type": content_type,
+                                        "old_time": last_scan,
+                                        "new_time": file.mtime,
+                                        "info": file._asdict(),
+                                    }
+                                )
+                                logger.info(
+                                    "[%s] Livereloadish change detected between runs in %s",
+                                    reqid,
+                                    file.relative_path,
+                                )
+                                for reqid, queue in self.queues.items():
+                                    queue.put(f"id: {reqid},{last_scan}\nevent: assets_change\ndata: {data}\n\n")
+                                continue
+
+                            # If mtime throws an error, the file in question was deleted
+                            # so trigger a reload, otherwise see if it's newer and if it
+                            # is trigger a change request.
+                            try:
+                                new_mtime: float = os.path.getmtime(key)
+                            except FileNotFoundError:
+                                data = json.dumps(
+                                    {
+                                        "msg": "file deleted",
+                                        "asset_type": content_type,
+                                        "old_time": file.mtime,
+                                        "new_time": 0,
+                                        "info": file._asdict(),
+                                    }
+                                )
+                                logger.info(
+                                    "[%s] Livereloadish deletion/move detected for %s",
+                                    reqid,
+                                    file.relative_path,
+                                )
+                                for reqid, queue in self.queues.items():
+                                    queue.put(f"id: {reqid},{last_scan}\nevent: assets_delete\ndata: {data}\n\n")
+                                self.seen[content_type].pop(key, None)
+                            else:
+                                if new_mtime > file.mtime:
+                                    data = json.dumps(
+                                        {
+                                            "msg": "file updated",
+                                            "asset_type": content_type,
+                                            "old_time": file.mtime,
+                                            "new_time": new_mtime,
+                                            "info": file._asdict(),
+                                        }
+                                    )
+                                    logger.info(
+                                        "[%s] Livereloadish change detected in %s",
+                                        reqid,
+                                        file.relative_path,
+                                    )
+                                    for reqid, queue in self.queues.items():
+                                        queue.put(f"id: {reqid},{last_scan}\nevent: assets_change\ndata: {data}\n\n")
+                                    self.seen[content_type][key] = file._replace(
+                                        mtime=new_mtime
+                                    )
+                last_scan = time.time()
+
+                scan_duration = fileiterator.elapsed()
+                # Slow down (or stop) the watcher if it starts taking too long...
+                if scan_duration >= min_increment:
+                    increment = self.sleep_slow
+                elif scan_duration >= self.sleep_slow:
+                    pass
+                elif file_count == 0:
+                    increment = self.sleep_slow
+                else:
+                    increment = min_increment
+
+                logger.debug(
+                    "[%s] Checking mtimes for %s files took %ss, checking again in %ss",
+                    reqid,
+                    file_count,
+                    scan_duration,
+                    increment,
+                )
+                # Sleep at the end, because on the first iteration it's probably on
+                # page load and there may have been something to change since
+                # page_load/js_load were set. Basically a race condition where I'm
+                # saving & alt-tabbing quickly after refreshing and I don't want to
+                # miss a change and then assume it's got stuck and refresh manually again.
+                # Sort of defeats the point of livereload if I don't have faith in it working.
+                time.sleep(increment)
+
+        self.watcher = threading.Thread(target=watch, daemon=True)
+        self.watcher.start()
+        return True
+
+    def queue_for(self, uuid):
+        if uuid not in self.queues:
+            import queue
+            self.queues[uuid] = queue.Queue()
+            print(f'made queue for {uuid}')
+        return self.queues[uuid]
 
     def add_to_seen(
         self,
