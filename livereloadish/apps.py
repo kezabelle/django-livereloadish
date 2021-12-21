@@ -2,18 +2,20 @@ import logging
 import os
 import pickle
 import time
+import pathlib
 from collections import namedtuple
 from datetime import datetime, timezone
 from hashlib import sha1
 from tempfile import gettempdir
-from typing import Dict, Literal
+from typing import Dict, Literal, Optional
 
 from asgiref.local import Local
-from django.apps import AppConfig
+from django.apps import AppConfig, apps
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
-from django.utils.autoreload import DJANGO_AUTORELOAD_ENV
+from django.dispatch import receiver
+from django.utils.autoreload import DJANGO_AUTORELOAD_ENV, autoreload_started, BaseReloader
 from django.utils.functional import cached_property
 
 from livereloadish.patches import (
@@ -93,6 +95,7 @@ class LiveReloadishConfig(AppConfig):
         # "application/json": {},
     }
     during_request = Local()
+    django_reloader: Optional[BaseReloader] = None
 
     def ready(self) -> bool:
         if not self._should_be_enabled():
@@ -125,6 +128,20 @@ class LiveReloadishConfig(AppConfig):
             mtime,
             requires_full_reload,
         )
+        # Disabled for now ...
+        if 0 and self.django_reloader is not None:
+            # Apparently the modern reloader literally doesn't support str paths,
+            # only Path instances. boo.
+            #
+            # mtime = file.stat().st_mtime
+            #   AttributeError: 'str' object has no attribute 'stat'
+            #
+            # Note that I can't see a way to determine if the file being changed
+            # is already present in either directory_globs or iter_all_python_module_files
+            # so I think doing it this way introduces the possibility that it's
+            # stat'd twice or thrice? Although it may get amortized down into one
+            # value based on snapshot_files()'s seen_files or tick's mtimes?
+            self.django_reloader.extra_files.add(pathlib.Path(absolute_path))
         return True
 
     @cached_property
@@ -191,3 +208,18 @@ class LiveReloadishConfig(AppConfig):
         self.lockfile_storage.delete(self.lockfile)
         self.lockfile_storage.save(self.lockfile, ContentFile(pickle.dumps(self.seen)))
         return True
+
+
+@receiver(autoreload_started, dispatch_uid="livereloadish_reloader-connected")
+def save_reloader_to_appconfig(sender, signal, **kwargs):
+    """
+    I can't see a way to actually get a reference to the reloader in use within
+    the autoreload module, nor anywhere in the stack frame history, so let's
+    just patch one the heck in manually.
+    """
+    try:
+        appconf = apps.get_app_config("livereloadish")
+    except LookupError:
+        return None
+    else:
+        appconf.django_reloader = sender
