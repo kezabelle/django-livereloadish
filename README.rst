@@ -284,6 +284,7 @@ Below is a list of Django projects/applications working on similar/overlapping t
 the order in which I found them:
 
 * `django-browser-reload`_. At the time of writing, it's decidedly simpler in design, code, and architecture than the monstrous beast which I have wrought; that's probably a good thing.
+* `django-livereload-server`_. Looks like it requires a separate management command/server running, but probably covers some/many of the same use-cases.
 
 
 The license
@@ -305,3 +306,4 @@ It's  `FreeBSD`_. There's should be a ``LICENSE`` file in the root of the reposi
 .. _django-csp: https://django-csp.readthedocs.io/en/latest/
 .. _FreeBSD: http://en.wikipedia.org/wiki/BSD_licenses#2-clause_license_.28.22Simplified_BSD_License.22_or_.22FreeBSD_License.22.29
 .. _django-browser-reload: https://github.com/adamchainz/django-browser-reload
+.. _django-livereload-server: https://github.com/tjwalch/django-livereload-server
