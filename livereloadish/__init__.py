@@ -24,6 +24,7 @@ import mimetypes
 import os
 from typing import Optional, Literal
 from django.apps import apps as django_apps_registry
+from django.core.exceptions import ImproperlyConfigured
 from .apps import LiveReloadishConfig
 
 from .middleware import LivereloadishMiddleware
@@ -62,7 +63,10 @@ def watch_file(
     if mtime is None:
         mtime = os.path.getmtime(absolute_path)
 
-    appconf: LiveReloadishConfig = django_apps_registry.get_app_config("livereloadish")
+    try:
+        appconf: LiveReloadishConfig = django_apps_registry.get_app_config("livereloadish")
+    except LookupError as exc:
+        raise ImproperlyConfigured("Unable to watch a file without an appconfig for 'livereloadish'") from exc
     if content_type in appconf.seen:
         return appconf.add_to_seen(
             content_type=content_type,
