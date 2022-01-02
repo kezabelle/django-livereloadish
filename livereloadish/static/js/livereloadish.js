@@ -188,7 +188,22 @@
             this.dataKey = "forms_for_" + key;
             this.scrollKey = "scrolls_for_" + key;
             this.focusKey = "focus_for_" + key;
+            this.promptKey = "prompts_for_" + key;
         }
+        LivereloadishPageState.prototype.savePrompts = function () {
+            // this is a bit bleh, depending on something from the outer scope
+            // but hey ho.
+            var serializedPromptState = JSON.stringify(promptDecisions);
+            if (Object.keys(promptDecisions).length > 0) {
+                sessionStorage.setItem(this.promptKey, serializedPromptState);
+            }
+            else {
+                // There's nothing to persist, let's also make sure we tidy out
+                // any stragglers.
+                sessionStorage.removeItem(this.promptKey);
+            }
+            return [promptDecisions, serializedPromptState];
+        };
         LivereloadishPageState.prototype.saveForm = function () {
             var formElements = Array.prototype.slice.call(document.querySelectorAll('input, select, textarea'));
             var formValues = {};
@@ -291,7 +306,19 @@
             var _a = this.saveForm(), formValues = _a[0], serializedFormState = _a[1];
             var _b = this.saveScroll(), scrollPos = _b[0], serializedScrollState = _b[1];
             var _c = this.saveActiveElement(), focusSelector = _c[3];
-            return [formValues, serializedFormState, scrollPos, serializedScrollState, focusSelector];
+            var _d = this.savePrompts(), promptDecisions = _d[0], serializedPromptState = _d[1];
+            return [formValues, serializedFormState, scrollPos, serializedScrollState, focusSelector, promptDecisions, serializedPromptState];
+        };
+        LivereloadishPageState.prototype.restorePrompts = function () {
+            var serializedPromptState = sessionStorage.getItem(this.promptKey);
+            if (serializedPromptState !== null && serializedPromptState !== '') {
+                promptDecisions = JSON.parse(serializedPromptState);
+                var files = Object.keys(promptDecisions).join(', ');
+                console.debug(logState, logFmt, "Restoring previous prompt decisions for " + files);
+                // Specifically do not remove this key, as we want this to
+                // persist for longer than one reload, unlike the others.
+            }
+            return serializedPromptState !== null && serializedPromptState !== '';
         };
         LivereloadishPageState.prototype.restoreForm = function () {
             var serializedFormState = sessionStorage.getItem(this.dataKey);
@@ -342,7 +369,7 @@
                 }
                 sessionStorage.removeItem(this.dataKey);
             }
-            return serializedFormState !== null;
+            return serializedFormState !== null && serializedFormState !== '';
         };
         LivereloadishPageState.prototype.restoreScroll = function () {
             var serializedScrollState = sessionStorage.getItem(this.scrollKey);
@@ -352,7 +379,7 @@
                 window.scrollTo(scrollPos.x, scrollPos.y);
                 sessionStorage.removeItem(this.scrollKey);
             }
-            return serializedScrollState !== null;
+            return serializedScrollState !== null && serializedScrollState !== '';
         };
         LivereloadishPageState.prototype.restoreActiveElement = function () {
             var selector = sessionStorage.getItem(this.focusKey);
@@ -371,14 +398,19 @@
                 }
                 sessionStorage.removeItem(this.focusKey);
             }
-            return selector !== null;
+            return selector !== null && selector !== '';
         };
         LivereloadishPageState.prototype.restore = function () {
             var restoredForm = this.restoreForm();
             var restoredScroll = this.restoreScroll();
             var restoredFocus = this.restoreActiveElement();
-            return restoredForm || restoredScroll || restoredFocus;
+            var restoredPrompts = this.restorePrompts();
+            return restoredForm || restoredScroll || restoredFocus || restoredPrompts;
         };
+        /**
+         * Check the document ready state and prepare to call restoreAfterRefresh.
+         * This executes once when this script is loaded.
+         */
         LivereloadishPageState.bindForRefresh = function () {
             if (/^(loaded|complete|interactive)$/.test(document.readyState)) {
                 LivereloadishPageState.restoreAfterRefresh.call(document);
@@ -391,6 +423,8 @@
         /**
          * Essentially, .once(). If a page has to do a full reload, still try and restore
          * the values and then unbind.
+         * This includes restoring values into the prompt decisions, along with
+         * scrolling and form values etc.
          */
         LivereloadishPageState.restoreAfterRefresh = function () {
             var instance = new LivereloadishPageState(window.location.toString());
@@ -598,7 +632,14 @@
         console.debug(logQueue, logFmt, "Deferring " + file + " (modified at: " + mtime + ") until page is visible");
         queuedUp[file] = msg;
     };
-    var promptedUnrelatedPagePreviously = [];
+    /**
+     * When a 'possibly unrelated' file is updated, ask the user whether to reload.
+     * Keys are files, values are booleans - true means "reload" and false
+     * means "don't reload"
+     * Data is persisted to the session storage so navigating around probably
+     * obeys previous decisions.
+     */
+    var promptDecisions = {};
     /**
      * Refresh the page because a Django template was noticed as changing.
      * If the Django monkeypatches say that it was a _root_ template which changed,
@@ -639,19 +680,25 @@
         if (!(file in seenTemplates)) {
             // If it doesn't look related to this page, prompt the user to reload
             // and if they choose not to, ignore subsequent changes to the file.
-            if (promptedUnrelatedPagePreviously.indexOf(file) > -1) {
-                console.debug(logPage, logFmt, file + " is probably unrelated, and the user has already been notified");
+            if (file in promptDecisions && promptDecisions[file] === false) {
+                console.debug(logPage, logFmt, file + " is probably unrelated, user has already been notified, ignoring");
                 return;
             }
-            var goneAway = '';
-            if ((evtSource === null || evtSource === void 0 ? void 0 : evtSource.readyState) !== 1) {
-                goneAway = ' and runserver may be restarting,';
+            else if (file in promptDecisions && promptDecisions[file] === true) {
+                console.debug(logPage, logFmt, file + " is probably unrelated, user has already been notified, refreshing");
             }
-            var confirmReload = window.confirm("Possibly unrelated file \"" + file + "\" has been changed," + goneAway + " reload anyway?");
-            if (!confirmReload) {
-                promptedUnrelatedPagePreviously.push(file);
-                console.error(logPage, logFmt, file + " is probably unrelated, page may need manually reloading");
-                return;
+            else {
+                // handle the case where the file hasn't been prompted & recorded previously.
+                var goneAway = '';
+                if ((evtSource === null || evtSource === void 0 ? void 0 : evtSource.readyState) !== 1) {
+                    goneAway = ' and runserver may be restarting,';
+                }
+                var confirmReload = window.confirm("Possibly unrelated file \"" + file + "\" has been changed," + goneAway + " reload anyway?");
+                promptDecisions[file] = confirmReload;
+                if (!confirmReload) {
+                    console.error(logPage, logFmt, file + " is probably unrelated, page may need manually reloading");
+                    return;
+                }
             }
         }
         // @ts-ignore
@@ -726,8 +773,11 @@
                 'redirect': 'error',
             });
             fetchResponse.then(function (response) {
-                if (!response.ok) {
-                    throw new TypeError("Stop due to " + response.status + " (" + response.statusText + ")");
+                if (response.status > 300 && response.status < 400) {
+                    throw new TypeError("Stop due to Redirection: " + response.status + " (" + response.statusText + ")");
+                }
+                else if (response.status > 500) {
+                    throw new TypeError("Stop due to Server error: " + response.status + " (" + response.statusText + ")");
                 }
                 return response.text();
             }).then(function (body) {
@@ -1123,8 +1173,8 @@
             delete queuedUp[key];
         }
         // drain these consts.
-        while (promptedUnrelatedPagePreviously.length) {
-            promptedUnrelatedPagePreviously.pop();
+        for (var key in promptDecisions) {
+            delete promptDecisions[key];
         }
         while (promptedAssetDeletedPreviously.length) {
             promptedAssetDeletedPreviously.pop();
