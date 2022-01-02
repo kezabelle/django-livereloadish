@@ -400,6 +400,26 @@
             }
             return selector !== null && selector !== '';
         };
+        /**
+         * Special case for django-debug-toolbar (djdt) to restore the handle's
+         * visibility after a *partial* reload.
+         * Not called as part of restore() because I dunno if it's idempotent (i.e.
+         * safe to call N times) ... it seems like maybe it is?
+         */
+        LivereloadishPageState.prototype.restoreDebugToolbar = function () {
+            // @ts-ignore
+            if (window.djdt && window.djdt.init) {
+                console.debug(logState, logFmt, "Restoring django-debug-toolbar because window.djdt.init exists");
+                // @ts-ignore
+                window.djdt.init();
+                var handle = document.getElementById('djDebugToolbarHandle');
+                // It fell off the page because the CSS is also being applied?
+                if (handle !== null && handle.style.top && handle.style.top.charAt(0) === '-') {
+                    var handleTop = parseInt(localStorage.getItem("djdt.top") || '0');
+                    handle.style.top = handleTop + "px";
+                }
+            }
+        };
         LivereloadishPageState.prototype.restore = function () {
             var restoredForm = this.restoreForm();
             var restoredScroll = this.restoreScroll();
@@ -811,6 +831,7 @@
                     }
                 }
                 pageState.restore();
+                pageState.restoreDebugToolbar();
                 checkSeenTemplatesUpdated(seenTemplatesAt);
             }).catch(function (_err) {
                 console.debug(logPage, logFmt, "An error occurred doing a partial reload because " + file + " changed");

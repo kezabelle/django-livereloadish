@@ -9,10 +9,11 @@ from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 from django.core.handlers.wsgi import WSGIRequest
-from django.http.response import HttpResponseBase
-from django.urls import include, path
+from django.http.response import HttpResponseBase, Http404
+from django.views.decorators.cache import never_cache
+from django.views.decorators.gzip import gzip_page
+from livereloadish.views import sse, js, stats
 
-from .urls import urlpatterns as livereloadish_urlpatterns
 
 __all__ = ["logger", "NamedUrlconf", "LivereloadishMiddleware"]
 logger = logging.getLogger(__name__)
@@ -60,10 +61,37 @@ class LivereloadishMiddleware:
 
     def __call__(self, request: WSGIRequest) -> HttpResponseBase:
         if request.path[0:15] == f"/{self.prefix}/" and settings.DEBUG:
-            request.urlconf = NamedUrlconf(
-                path(f"{self.prefix}/", include(livereloadish_urlpatterns))
-            )
-            return self.get_response(request)
+            # So unfortunately it turns out that my substituting the request.urlconf
+            # causes things to break if I include DebugToolbarMiddleware before OR
+            # after this middleware, and resetting it back to None doesn't fix it,
+            # so presumably a reference to it is held through the request as the
+            # whole resolver.
+            # So now I'm just going to manually compare strings. S'fine.
+            remainder = request.path[15:]
+            match_scripts = {
+                'watcher/livereloadish.js.map',
+                'watcher/livereloadish.js',
+                'watcher/livereloadish.ts',
+                'watcher/livereloadish.d.ts',
+            }
+            if remainder in match_scripts:
+                prelude, sep, extension = remainder.partition('.')
+                return gzip_page(never_cache(js))(request, extension)
+            elif remainder == "watch/":
+                return never_cache(sse)(request)
+            elif remainder == "stats/":
+                response = never_cache(stats)(request)
+                # For some reason I have to do this here so that CommonMiddleware
+                # doesn't cause it to throw with:
+                # django.template.response.ContentNotRenderedError: The response content must be rendered before it can be accessed
+                # though this makes little sense as django.core.handlers.base.BaseHandler._get_response
+                # should handle that, non?
+                if hasattr(response, 'render'):
+                    response.render()
+                return response
+            else:
+                raise Http404(f"Unexpected suffix under {self.prefix}")
+
         self.appconf.during_request.templates = {}
         self.appconf.during_request.files = {}
         response = self.get_response(request)
