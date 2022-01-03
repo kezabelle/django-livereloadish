@@ -1450,7 +1450,7 @@
         // Reload anything matching the file NAME rather than the file PATH
         // in case items are referenced relatively rather than using {% static %}
         // or whatever. This shouldn't happen often, but can.
-        var possiblyReloadableScriptElements = document.querySelectorAll("script[src*=\"" + filename + "\"]:not([data-no-reload]):not([data-pending-removal]):not([data-turbolinks-eval=\"false\"]):not([up-keep])");
+        var possiblyReloadableScriptElements = document.querySelectorAll("script[src*=\"" + filename + "\"]");
         var scriptElements = Array.prototype.slice.call(possiblyReloadableScriptElements);
         for (var _i = 0, scriptElements_1 = scriptElements; _i < scriptElements_1.length; _i++) {
             var scriptElement = scriptElements_1[_i];
@@ -1461,6 +1461,22 @@
                 replaceJSFile(scriptElement, msg, origin);
             }
             else {
+                if (scriptElement.dataset.noReload !== undefined) {
+                    console.debug(logJS, logFmt, src + " is marked with data-no-reload, ignoring reload");
+                    return;
+                }
+                else if (scriptElement.dataset.pendingRemoval !== undefined) {
+                    console.debug(logJS, logFmt, src + " is marked with data-pending-removal, ignoring reload");
+                    return;
+                }
+                else if (scriptElement.dataset.upKeep !== undefined) {
+                    console.debug(logJS, logFmt, src + " is marked with up-keep, ignoring reload");
+                    return;
+                }
+                else if (scriptElement.dataset.turbolinksEval === "false") {
+                    console.debug(logJS, logFmt, src + " is marked with data-turbolinks-eval=false, ignoring reload");
+                    return;
+                }
                 // Now we have to reload, so we can stop immediately in case there were multiple
                 // replacements to deal with.
                 console.debug(logJS, logFmt, src + " is not reloadable");
@@ -1634,6 +1650,7 @@
             // fired and livereloadishTeardown deleted them? Not sure...
             for (var key in queuedUp) {
                 var msg = queuedUp[key];
+                console.debug(logQueue, logFmt, "Processing " + key + " as " + msg.asset_type);
                 var selectedReloadStrategy = activeReloadStrategies[msg.asset_type];
                 selectedReloadStrategy(msg);
                 delete queuedUp[key];
