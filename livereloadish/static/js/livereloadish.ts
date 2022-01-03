@@ -925,11 +925,13 @@
         public scrollKey: string;
         public focusKey: string;
         public promptKey: string;
+        public djdtKey: string;
         constructor(key: string) {
             this.dataKey = `forms_for_${key}`;
             this.scrollKey = `scrolls_for_${key}`;
             this.focusKey = `focus_for_${key}`;
             this.promptKey = `prompts_for_${key}`;
+            this.djdtKey = `djdt_for_${key}`;
         }
 
         savePrompts() {
@@ -1042,12 +1044,25 @@
             return ["", "", "", ""]
         }
 
+        saveDebugToolbar() {
+            const opened = document.querySelector(".djDebugPanelButton.djdt-active");
+            if (opened !== null) {
+                const selector = `li#${opened.id} a`;
+                if (selector !== 'li# a') {
+                    sessionStorage.setItem(this.djdtKey, selector);
+                }
+                return [selector];
+            }
+            return [""];
+        }
+
         save() {
             const [formValues, serializedFormState] = this.saveForm();
             const [scrollPos, serializedScrollState] = this.saveScroll();
             const [, , , focusSelector] = this.saveActiveElement();
             const [promptDecisions, serializedPromptState ] = this.savePrompts();
-            return [formValues, serializedFormState, scrollPos, serializedScrollState, focusSelector, promptDecisions, serializedPromptState];
+            const [djdtOpened] = this.saveDebugToolbar();
+            return [formValues, serializedFormState, scrollPos, serializedScrollState, focusSelector, promptDecisions, serializedPromptState, djdtOpened];
         }
 
         restorePrompts() {
@@ -1146,23 +1161,58 @@
 
         /**
          * Special case for django-debug-toolbar (djdt) to restore the handle's
-         * visibility after a *partial* reload.
-         * Not called as part of restore() because I dunno if it's idempotent (i.e.
-         * safe to call N times) ... it seems like maybe it is?
+         * visibility after areload.
+         * It's not idempotent to call .init() repeatedly ... it adds additional
+         * event listeners and there's no equivalent deinit(), so I'm stuck
+         * mashing special cases in.
+         * If a panel is open and a FULL reload occurs, chances are that the
+         * previously opened panel will not get restored because of a race
+         * condition between this firing and the async toolbar...
          */
         restoreDebugToolbar() {
             // @ts-ignore
             if (window.djdt && window.djdt.init) {
-                console.debug(logState, logFmt, `Restoring django-debug-toolbar because window.djdt.init exists`);
-                // @ts-ignore
-                window.djdt.init();
-                const handle = document.getElementById('djDebugToolbarHandle');
-                // It fell off the page because the CSS is also being applied?
-                if (handle !== null && handle.style.top && handle.style.top.charAt(0) === '-') {
-                    const handleTop = parseInt(localStorage.getItem("djdt.top") || '0');
-                    handle.style.top = handleTop + "px";
+                const djDebug = document.getElementById("djDebug");
+                if (djDebug !== null) {
+
+                    djDebug.classList.remove("djdt-hidden");
+                    const show = localStorage.getItem("djdt.show") || djDebug.dataset.defaultShow;
+                    if (show === "true") {
+                        console.debug(logState, logFmt, "Restoring django-debug-toolbar sidebar panel because window.djdt.init exists and #djDebug is in the new page");
+                        window.djdt.show_toolbar();
+                    } else {
+                        console.debug(logState, logFmt, "Restoring django-debug-toolbar handle because window.djdt.init exists and #djDebug is in the new page");
+                        window.djdt.hide_toolbar();
+                    }
+
+                    const handle = document.getElementById('djDebugToolbarHandle');
+                    // It fell off the page because the CSS is also being applied?
+                    if (handle !== null && handle.style.top && handle.style.top.charAt(0) === '-') {
+                        console.debug(logState, logFmt, "Restoring django-debug-toolbar handle position");
+                        const handleTop = parseInt(localStorage.getItem("djdt.top") || '0');
+                        handle.style.top = handleTop + "px";
+                    }
+                    // const selector = sessionStorage.getItem(this.djdtKey);
+                    // if (selector !== null && selector !== '' && selector !== 'li# a') {
+                    //     const element: HTMLElement | null = document.querySelector(selector);
+                    //     if (element !== null) {
+                    //         console.debug(logState, logFmt, `Restoring django-debug-toolbar opened panel ${selector}`);
+                    //         const toolbar = document.getElementById('djDebugToolbar');
+                    //         if (toolbar !== null) {
+                    //             toolbar.classList.remove('djdt-hidden');
+                    //         }
+                    //         if (handle !== null) {
+                    //             handle.classList.add('djdt-hidden');
+                    //         }
+                    //         element.click();
+                    //     }
+                    // }
+
                 }
+                sessionStorage.removeItem(this.djdtKey);
+                return true;
             }
+            return false;
         }
 
         restore() {
@@ -1170,7 +1220,8 @@
             const restoredScroll = this.restoreScroll();
             const restoredFocus = this.restoreActiveElement();
             const restoredPrompts = this.restorePrompts();
-            return restoredForm || restoredScroll || restoredFocus || restoredPrompts;
+            const restoredDebugToolbar = this.restoreDebugToolbar();
+            return restoredForm || restoredScroll || restoredFocus || restoredPrompts || restoredDebugToolbar;
         }
 
         /**
@@ -1572,7 +1623,6 @@
                 }
 
                 pageState.restore();
-                pageState.restoreDebugToolbar();
                 checkSeenTemplatesUpdated(seenTemplatesAt);
             }).catch(function (err: Error) {
                 console.debug(logPage, logFmt, `An error occurred doing a partial reload because ${file} changed; ${err}`);
