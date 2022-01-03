@@ -869,6 +869,7 @@
     const logCSS = logPrefix + `: CSS`;
     const logJS = logPrefix + `: JS`;
     const logIMG = logPrefix + `: Image`;
+    const logPython = logPrefix + `: Python`;
     const logPage = logPrefix + `: Page`;
     const logState = logPrefix + `: State`;
     const logQueue = logPrefix + `: Queue`;
@@ -1715,7 +1716,50 @@
             console.debug(logIMG, logFmt, `Failed to find any images or CSS styles referencing ${file}`);
         }
     }
+    /**
+     * When a python file changes on the server, we MAY receive a message about it
+     * before the server starts reloading. If we do, we know we need to wait until
+     * the server is back up, by trying to reconnect to the SSE event stream.
+     * If we successfully connect to the event stream
+     */
+    const pythonStrategy: ReloadStrategy = (msg: AssetChangeData): void => {
+        console.debug(logPython, logFmt, `Server will need to restart, polling for when it comes back.`);
+        const event = new CustomEvent('fake-error');
+        reconnectRequested(event);
 
+        let intervalId: undefined | number = undefined;
+        const unloop = () => {
+            if (intervalId !== undefined) {
+                clearInterval(intervalId);
+                return true;
+            }
+            return false;
+        }
+
+        let duration = 0;
+        const loop = () => {
+            // At 30seconds or so ... just give up entirely, it's not coming back.
+            duration += 1000;
+            const maxDuration = (maxErrors * 3000);
+            // We defer to the pageStrategy, which MAY end up just being the
+            // refreshStrategy anyway, so that we can prompt for possibly
+            // unrelated files and let the user's preference get saved ...
+            if (errorCount >= maxErrors) {
+                console.error(logPython, logFmt, `Forcing the refresh so it's evident something broke`);
+                unloop();
+                return pageStrategy(msg);
+            } else if (evtSource?.readyState === 1) {
+                unloop();
+                return pageStrategy(msg);
+            } else if (duration >= maxDuration) {
+                console.error(logPython, logFmt, `Giving up on waiting for the server to come back, after 30 seconds trying`);
+                unloop();
+            } else {
+                console.debug(logPython, logFmt, `Still waiting...`);
+            }
+        }
+        intervalId = setInterval(loop, 1000);
+    }
     /**
      * A mapping of mimetypes to the real reload/replace/refresh strategies for
      * that file type. For CSS/JS/HTML/Images that includes attempting to do the
@@ -1735,8 +1779,8 @@
         "font/ttf": refreshStrategy,
         "font/woff": refreshStrategy,
         "font/woff2": refreshStrategy,
-        "text/x-python": pageStrategy,
-        "application/x-python-code": pageStrategy,
+        "text/x-python": pythonStrategy,
+        "application/x-python-code": pythonStrategy,
         "text/markdown": refreshStrategy,
         "application/octet-stream": noopStrategy,
     }
