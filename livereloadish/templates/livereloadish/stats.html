@@ -107,7 +107,9 @@
             <div class="paths">
               <div class="relative_path">{{ seen_file.relative_path }}</div>
               <hr>
+              {% if seen_file.absolute_path != seen_file.relative_path %}
               <div class="absolute_path">{{ seen_file.absolute_path }}</div>
+              {% endif %}
             </div>
             <div class="modified_time">
               {{ seen_file.mtime_as_utc_date }}
