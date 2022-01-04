@@ -172,72 +172,77 @@ def do_patch_static_serve() -> bool:
 
 
 def patched_template_compile_nodelist(self: Template) -> NodeList:
+    output = original_template_compile_nodelist(self)
     try:
         appconf = apps.get_app_config("livereloadish")
     except LookupError:
-        return original_template_compile_nodelist(self)
+        return output
+    try:
+        seen_templates = appconf.during_request.templates
+    except AttributeError:
+        # We're outside of the request/response cycle, or haven't got the middleware
+        logger.debug(
+            "Ignoring Template.compile_nodelist(%s) for seen-during-request",
+            self.origin.name,
+        )
+        return output
+    seen_already_during_request = self.origin.template_name in seen_templates
+    if self.origin.template_name and not seen_already_during_request:
+        # We've seen this template, let's try and mark it as related to a
+        # given request...
+        # Note that at this point it should have an actual path rather
+        # than being UNKNOWN_SOURCE
+        seen_templates[self.origin.template_name] = self.origin.name
+        # seen_templates[self.origin.name] = self.origin.template_name
+        logger.debug(
+            "Adding Template.compile_nodelist(%s) to seen-during-request",
+            self.origin.name,
+        )
+    # Avoid stat'ing something like "pipeline/css.html" multiple times during
+    # a single request in dev, when they're not amalgamated into one tag.
+    if seen_already_during_request:
+        logger.debug(
+            "Previously seen-during-request for Template.compile_nodelist(%s)",
+            self.origin.name,
+        )
+        return output
+    # Seen by another layer, skip work
+    if hasattr(self, "livereloadish_seen"):
+        return output
+    # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
+    if hasattr(self, "template") and hasattr(self.template, "livereloadish_seen"):
+        return output
+
+    try:
+        abspath = os.path.abspath(self.origin.name)
+    except AttributeError:
+        pass
     else:
-        try:
-            seen_templates = appconf.during_request.templates
-        except AttributeError:
-            # We're outside of the request/response cycle, or haven't got the middleware
+        content_type, encoding = mimetypes.guess_type(abspath)
+        if content_type in appconf.seen:
             logger.debug(
-                "Ignoring Template.compile_nodelist(%s) for seen-during-request",
-                self.origin.name,
+                "Adding Template.compile_nodelist(%s) to tracked assets using stat syscall",
+                abspath,
+            )
+            appconf.add_to_seen(
+                content_type,
+                self.origin.template_name,
+                abspath,
+                os.path.getmtime(abspath),
+                # Support the notion of whether or not a template NEEDS a hard refresh
+                # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
+                # because then things added via {% include %} would also constitute
+                # a full reload...
+                requires_full_reload=False,
             )
         else:
-            if self.origin.template_name:
-                # We've seen this template, let's try and mark it as related to a
-                # given request...
-                # Note that at this point it should have an actual path rather
-                # than being UNKNOWN_SOURCE
-                seen_templates[self.origin.template_name] = self.origin.name
-                # seen_templates[self.origin.name] = self.origin.template_name
-                logger.debug(
-                    "Adding Template.compile_nodelist(%s) to seen-during-request",
-                    self.origin.name,
-                )
-
-        output = original_template_compile_nodelist(self)
-
-        # Seen by another layer, skip work
-        if hasattr(self, "livereloadish_seen"):
-            return output
-        # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
-        if hasattr(self, "template") and hasattr(self.template, "livereloadish_seen"):
-            return output
-
-        try:
-            abspath = os.path.abspath(self.origin.name)
-        except AttributeError:
-            pass
-        else:
-            content_type, encoding = mimetypes.guess_type(abspath)
-            appconf = apps.get_app_config("livereloadish")
-            if content_type in appconf.seen:
-                logger.debug(
-                    "Adding Template.compile_nodelist(%s) to tracked assets using stat syscall",
-                    abspath,
-                )
-                appconf.add_to_seen(
-                    content_type,
-                    self.origin.template_name,
-                    abspath,
-                    os.path.getmtime(abspath),
-                    # Support the notion of whether or not a template NEEDS a hard refresh
-                    # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
-                    # because then things added via {% include %} would also constitute
-                    # a full reload...
-                    requires_full_reload=False,
-                )
-            else:
-                logger.debug(
-                    "Skipping Template.compile_nodelist(%s) due to content type %s being un-tracked",
-                    abspath,
-                    content_type,
-                )
-        self.livereloadish_seen = True
-        return output
+            logger.debug(
+                "Skipping Template.compile_nodelist(%s) due to content type %s being un-tracked",
+                abspath,
+                content_type,
+            )
+    self.livereloadish_seen = True
+    return output
 
 
 def do_patch_template_compile_nodelist() -> bool:
@@ -266,34 +271,53 @@ def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
     ):
         return template
     try:
+        appconf = apps.get_app_config("livereloadish")
+    except LookupError:
+        return template
+    try:
         abspath = os.path.abspath(origin.name)
     except AttributeError:
         pass
     else:
-        content_type, encoding = mimetypes.guess_type(abspath)
-        appconf = apps.get_app_config("livereloadish")
-        if content_type in appconf.seen:
+        try:
+            seen_templates = appconf.during_request.templates
+            seen_already_during_request = template.origin.template_name in seen_templates
+        except AttributeError:
+            seen_already_during_request = False
+            # We're outside of the request/response cycle, or haven't got the middleware
             logger.debug(
-                "Adding Engine.find_template(%s) to tracked assets using stat syscall",
-                abspath,
+                "Ignoring Engine.find_template(%s) for seen-during-request",
+                template.origin.name,
             )
-            appconf.add_to_seen(
-                content_type,
-                origin.template_name,
-                abspath,
-                os.path.getmtime(abspath),
-                # Support the notion of whether or not a template NEEDS a hard refresh
-                # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
-                # because then things added via {% include %} would also constitute
-                # a full reload...
-                requires_full_reload=False,
+        if seen_already_during_request:
+            logger.debug(
+                "Previously seen-during-request for Engine.find_template(%s)",
+                template.origin.name,
             )
         else:
-            logger.debug(
-                "Skipping Engine.find_template(%s) due to content type %s being un-tracked",
-                abspath,
-                content_type,
-            )
+            content_type, encoding = mimetypes.guess_type(abspath)
+            if content_type in appconf.seen:
+                logger.debug(
+                    "Adding Engine.find_template(%s) to tracked assets using stat syscall",
+                    abspath,
+                )
+                appconf.add_to_seen(
+                    content_type,
+                    origin.template_name,
+                    abspath,
+                    os.path.getmtime(abspath),
+                    # Support the notion of whether or not a template NEEDS a hard refresh
+                    # I can't do it by looking at nodelist + nodelist[0] == ExtendsNode
+                    # because then things added via {% include %} would also constitute
+                    # a full reload...
+                    requires_full_reload=False,
+                )
+            else:
+                logger.debug(
+                    "Skipping Engine.find_template(%s) due to content type %s being un-tracked",
+                    abspath,
+                    content_type,
+                )
     template.livereloadish_seen = True
     return template, origin
 
@@ -375,7 +399,10 @@ def patched_extendsnode_get_parent(self: ExtendsNode, context: Context) -> Any:
             pass
         else:
             content_type, encoding = mimetypes.guess_type(abspath)
-            appconf = apps.get_app_config("livereloadish")
+            try:
+                appconf = apps.get_app_config("livereloadish")
+            except LookupError:
+                return template
             if content_type in appconf.seen and abspath in appconf.seen[content_type]:
                 existing_seen = appconf.seen[content_type][abspath]
                 logger.debug(
