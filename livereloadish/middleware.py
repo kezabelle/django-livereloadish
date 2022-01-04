@@ -60,6 +60,8 @@ class LivereloadishMiddleware:
         self.process_load = time.time()
 
     def __call__(self, request: WSGIRequest) -> HttpResponseBase:
+        self.appconf.during_request.templates = {}
+        self.appconf.during_request.files = {}
         if request.path[0:15] == f"/{self.prefix}/" and settings.DEBUG:
             # So unfortunately it turns out that my substituting the request.urlconf
             # causes things to break if I include DebugToolbarMiddleware before OR
@@ -91,16 +93,17 @@ class LivereloadishMiddleware:
                 return response
             else:
                 raise Http404(f"Unexpected suffix under {self.prefix}")
-
-        self.appconf.during_request.templates = {}
-        self.appconf.during_request.files = {}
         response = self.get_response(request)
-        return self.insert_html(
+        response = self.insert_html(
             request,
             response,
             self.appconf.during_request.templates,
             self.appconf.during_request.files,
         )
+        # Empty the values ...
+        del self.appconf.during_request.templates
+        del self.appconf.during_request.files
+        return response
 
     def insert_html(
         self,
