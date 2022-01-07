@@ -15,7 +15,11 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
 from django.dispatch import receiver
-from django.utils.autoreload import DJANGO_AUTORELOAD_ENV, autoreload_started, BaseReloader
+from django.utils.autoreload import (
+    DJANGO_AUTORELOAD_ENV,
+    autoreload_started,
+    BaseReloader,
+)
 from django.utils.functional import cached_property
 
 from livereloadish.patches import (
@@ -206,8 +210,33 @@ class LiveReloadishConfig(AppConfig):
             file_count,
             self.lockfile_storage.path(self.lockfile),
         )
-        self.lockfile_storage.delete(self.lockfile)
-        self.lockfile_storage.save(self.lockfile, ContentFile(pickle.dumps(self.seen)))
+        try:
+            self.lockfile_storage.delete(self.lockfile)
+            self.lockfile_storage.save(
+                self.lockfile, ContentFile(pickle.dumps(self.seen))
+            )
+        except FileNotFoundError as e:
+            logger.debug(
+                "Failed to dump %s files into previously seen file cache, lockfile was swept away probably",
+                file_count,
+                exc_info=e,
+            )
+            # Delete the cached_property to try again at getting the temp dir.
+            # Because it could've technically changed...
+            if "lockfile_storage" in self.__dict__:
+                self.__dict__.pop("lockfile_storage")
+            return False
+        except OSError as e:
+            logger.debug(
+                "Failed to dump %s files into previously seen file cache for an unknown reason",
+                file_count,
+                exc_info=e,
+            )
+            # Delete the cached_property to try again at getting the temp dir.
+            # Because it could've technically changed...
+            if "lockfile_storage" in self.__dict__:
+                self.__dict__.pop("lockfile_storage")
+            return False
         return True
 
 
