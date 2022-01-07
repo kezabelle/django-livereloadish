@@ -12,6 +12,7 @@ from typing import Dict, Literal, Optional
 from asgiref.local import Local
 from django.apps import AppConfig, apps
 from django.conf import settings
+from django.core.checks import register, Warning
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
 from django.dispatch import receiver
@@ -33,6 +34,26 @@ from livereloadish.patches import (
 
 __all__ = ["logger", "Seen", "LiveReloadishConfig"]
 logger = logging.getLogger(__name__)
+
+
+def check_for_default_middleware(app_configs, **kwargs):
+    try:
+        from django.conf import settings
+        mws = settings.MIDDLEWARE
+    except Exception:
+        return []
+
+    if "livereloadish.middleware.LivereloadishMiddleware" not in mws:
+        return [
+            Warning(
+                msg="Unable to find default Livereloadish middleware, unless "
+                    "you've subclassed and replaced it, live-reloading won't work",
+                hint="Add 'livereloadish.middleware.LivereloadishMiddleware' to your settings.MIDDLEWARE",
+                obj=None,
+                id="livereloadish.W001",
+            )
+        ]
+    return []
 
 
 class Seen(
@@ -102,6 +123,7 @@ class LiveReloadishConfig(AppConfig):
     django_reloader: Optional[BaseReloader] = None
 
     def ready(self) -> bool:
+        register("middleware")(check_for_default_middleware)
         if not self._should_be_enabled():
             logger.debug("Livereloadish is not applying patches")
             return False
