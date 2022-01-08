@@ -172,6 +172,7 @@ def do_patch_static_serve() -> bool:
 
 
 def patched_template_compile_nodelist(self: Template) -> NodeList:
+    __traceback_hide__ = True
     output = original_template_compile_nodelist(self)
     try:
         appconf = apps.get_app_config("livereloadish")
