@@ -1076,7 +1076,7 @@
          * scrolling and form values etc.
          */
         LivereloadishPageState.restoreAfterRefresh = function () {
-            var instance = new LivereloadishPageState(window.location.toString());
+            var instance = new LivereloadishPageState(window.location.pathname.toString());
             instance.restore();
             document.removeEventListener('load', LivereloadishPageState.restoreAfterRefresh);
             document.removeEventListener('DOMContentLoaded', LivereloadishPageState.restoreAfterRefresh);
@@ -1352,7 +1352,7 @@
         }
         // @ts-ignore
         var unpoly = window.up, turbolinks = window.Turbolinks, Swup = window.Swup, swupInstance = window.swup, url = window.location;
-        var pageState = new LivereloadishPageState(url.toString());
+        var pageState = new LivereloadishPageState(url.pathname.toString());
         pageState.save();
         var definitelyRequiresReload = msg.info.requires_full_reload;
         if (definitelyRequiresReload) {

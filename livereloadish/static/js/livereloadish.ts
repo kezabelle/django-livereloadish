@@ -1244,7 +1244,7 @@
          * scrolling and form values etc.
          */
         static restoreAfterRefresh() {
-            const instance = new LivereloadishPageState(window.location.toString());
+            const instance = new LivereloadishPageState(window.location.pathname.toString());
             instance.restore();
             document.removeEventListener('load', LivereloadishPageState.restoreAfterRefresh);
             document.removeEventListener('DOMContentLoaded', LivereloadishPageState.restoreAfterRefresh);
@@ -1518,7 +1518,7 @@
 
         // @ts-ignore
         const {up: unpoly, Turbolinks: turbolinks, Swup: Swup, swup: swupInstance, location: url} = window;
-        const pageState = new LivereloadishPageState(url.toString());
+        const pageState = new LivereloadishPageState(url.pathname.toString());
         pageState.save();
 
         const definitelyRequiresReload = msg.info.requires_full_reload;
