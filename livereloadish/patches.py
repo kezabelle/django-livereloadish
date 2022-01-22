@@ -85,9 +85,12 @@ def patched_serve(
             extra={"request": request},
         )
     else:
-        content_type, sep, params = response.headers.get(
-            "Content-Type", "application/octet-stream; fallback"
-        ).partition(";")
+        full_content_type = "application/octet-stream; fallback"
+        if response.has_header("Content-Type"):
+            full_content_type = response['Content-Type']
+
+        content_type, seq, params = full_content_type.partition(";")
+
         try:
             abspath = os.path.abspath(response.file_to_stream.name)
         except AttributeError as e:
@@ -141,17 +144,18 @@ def patched_serve(
         # same as B but with less precision)
         # And of those, set the cache header.
         fileresponse_mtime = 0.0
-        if "Last-Modified" in response.headers:
+
+        if response.has_header("Last-Modified"):
             fileresponse_mtime = float(
-                parse_http_date(response.headers["Last-Modified"])
+                parse_http_date(response["Last-Modified"])
             )
         mtimes = (request_mtime, mtime, fileresponse_mtime)
         newest_mtime = max(mtimes)
-        response.headers["Last-Modified"] = http_date(newest_mtime)
+        response["Last-Modified"] = http_date(newest_mtime)
         logger.debug(
             "Setting %s last modified header to %s because %s was the newest of %s",
             request.path,
-            response.headers["Last-Modified"],
+            response["Last-Modified"],
             newest_mtime,
             mtimes,
         )

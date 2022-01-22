@@ -114,16 +114,13 @@ class LivereloadishMiddleware:
     ) -> HttpResponseBase:
         # This prelude is taken from Django-debug-toolbar's middleware, because
         # it's been rock solid for my usage for 10 years, can't be totally wrong.
-        if hasattr(response, "headers"):
-            content_encoding = response.headers.get("Content-Encoding", "")
-            content_type = response.headers.get("Content-Type", "").partition(";")[0]
-        else:
-            content_encoding = ""
-            content_type = ""
-            if response.has_header("Content-Encoding"):
-                content_encoding = response["Content-Encoding"]
-            if response.has_header("Content-Type"):
-                content_type = response["Content-Type"].partition(";")[0]
+        content_encoding = ""
+        content_type = ""
+        if response.has_header("Content-Encoding"):
+            content_encoding = response["Content-Encoding"]
+        if response.has_header("Content-Type"):
+            content_type = response["Content-Type"].partition(";")[0]
+
         if (
             getattr(response, "streaming", False)
             or "gzip" in content_encoding
