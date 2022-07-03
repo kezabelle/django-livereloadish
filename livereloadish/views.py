@@ -5,7 +5,7 @@ import os
 import socket
 import sys
 import time
-from typing import Any, Union
+from typing import Any, Union, Iterator
 from uuid import UUID
 
 try:
@@ -76,7 +76,7 @@ def js(
 
 
 class SSEView(View):
-    def get(self, request):
+    def get(self, request: WSGIRequest) -> StreamingHttpResponse:
         if not settings.DEBUG:
             raise Http404("Only available when DEBUG=True")
         try:
@@ -95,7 +95,7 @@ class SSEView(View):
         except (TypeError, ValueError, KeyError):
             last_scan = time.time()
         try:
-            appconf = apps.get_app_config("livereloadish")
+            appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
         except LookupError:
             raise Http404(
                 "Only available when the livereloadish app is in INSTALLED_APPS"
@@ -110,7 +110,13 @@ class SSEView(View):
             content_type="text/event-stream",
         )
 
-    def loop(self, request, reqid: str, last_scan: float, appconf: LiveReloadishConfig):
+    def loop(
+        self,
+        request: WSGIRequest,
+        reqid: str,
+        last_scan: float,
+        appconf: LiveReloadishConfig,
+    ) -> Iterator[str]:
         loop_count = 0
         logger.info(
             "[%s] Livereloadish SSE client connected at %s, starting",
@@ -135,7 +141,7 @@ class SSEView(View):
             # test the socket the same way as we do for the others, by finding it
             # in the stack. Bleh.
             parent_frame = sys._getframe().f_back
-            server_handler = parent_frame.f_locals.get("self", None)
+            server_handler = parent_frame.f_locals.get("self", None)  # type: ignore [union-attr]
             try:
                 socket_handler = server_handler.channel.socket
             except AttributeError:
@@ -152,7 +158,7 @@ class SSEView(View):
                 # return ""
         else:
             parent_frame = sys._getframe().f_back
-            server_handler = parent_frame.f_locals.get("self", None)
+            server_handler = parent_frame.f_locals.get("self", None)  # type: ignore [union-attr]
             if not isinstance(server_handler, ServerHandler):
                 logger.error(
                     "[%s] Livereloadish failed to walk the stack backwards to find the ServerHandler in charge of the socket, for connection termination",
@@ -351,9 +357,11 @@ def stats(
     if not settings.DEBUG:
         raise Http404("Only available when DEBUG=True")
     try:
-        tracked_files = apps.get_app_config("livereloadish").seen
-    except LookupError:
-        raise Http404("Only available when the livereloadish app is in INSTALLED_APPS")
+        tracked_files = apps.get_app_config("livereloadish").seen  # type: ignore[attr-defined]
+    except (LookupError, AttributeError) as exc:
+        raise Http404(
+            "Only available when the livereloadish app is in INSTALLED_APPS"
+        ) from exc
     if "json" in request.GET:
         return JsonResponse(
             data=tracked_files,
@@ -375,7 +383,7 @@ def stats(
 @atexit.register
 def tidyup() -> None:
     try:
-        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")
+        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except (LookupError, AppRegistryNotReady) as e:
         return
     if appconf._should_be_enabled():

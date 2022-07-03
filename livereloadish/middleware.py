@@ -2,18 +2,21 @@ import json
 import logging
 import time
 from collections import namedtuple
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 from uuid import uuid4
 
 from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 from django.core.handlers.wsgi import WSGIRequest
-from django.http.response import HttpResponseBase, Http404
+from django.http.response import HttpResponse, HttpResponseBase, Http404
 from django.views.decorators.cache import never_cache
 from django.views.decorators.gzip import gzip_page
 from livereloadish.views import sse, js, stats
 
+if TYPE_CHECKING:
+    from .apps import LiveReloadishConfig
+    from django.template.response import SimpleTemplateResponse
 
 __all__ = ["logger", "NamedUrlconf", "LivereloadishMiddleware"]
 logger = logging.getLogger(__name__)
@@ -53,7 +56,7 @@ class LivereloadishMiddleware:
         if not settings.DEBUG:
             raise MiddlewareNotUsed("Livereloadish is only available if DEBUG=True")
         try:
-            self.appconf = apps.get_app_config("livereloadish")
+            self.appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
         except LookupError:
             raise MiddlewareNotUsed("Livereloadish is in the INSTALLED_APPS")
         self.get_response = get_response
@@ -71,13 +74,13 @@ class LivereloadishMiddleware:
             # So now I'm just going to manually compare strings. S'fine.
             remainder = request.path[15:]
             match_scripts = {
-                'watcher/livereloadish.js.map',
-                'watcher/livereloadish.js',
-                'watcher/livereloadish.ts',
-                'watcher/livereloadish.d.ts',
+                "watcher/livereloadish.js.map",
+                "watcher/livereloadish.js",
+                "watcher/livereloadish.ts",
+                "watcher/livereloadish.d.ts",
             }
             if remainder in match_scripts:
-                prelude, sep, extension = remainder.partition('.')
+                prelude, sep, extension = remainder.partition(".")
                 return gzip_page(never_cache(js))(request, extension)
             elif remainder == "watch/":
                 return never_cache(sse)(request)
@@ -88,18 +91,25 @@ class LivereloadishMiddleware:
                 # django.template.response.ContentNotRenderedError: The response content must be rendered before it can be accessed
                 # though this makes little sense as django.core.handlers.base.BaseHandler._get_response
                 # should handle that, non?
-                if hasattr(response, 'render'):
+                if hasattr(response, "render"):
+                    if TYPE_CHECKING:
+                        assert isinstance(
+                            response, SimpleTemplateResponse
+                        ), "satisfying mypy :("
                     response.render()
                 return response
             else:
                 raise Http404(f"Unexpected suffix under {self.prefix}")
         response = self.get_response(request)
+        # This can technically be any HttpResponseBase subtype, but mypy is dreadful and
+        # because I assigned response as a name in a completely separate branch, surprise
+        # it gets dumb and assumes that the types there can escape to here. They can't.
         response = self.insert_html(
             request,
             response,
             self.appconf.during_request.templates,
             self.appconf.during_request.files,
-        )
+        )  # type: ignore[assignment]
         # Empty the values ...
         del self.appconf.during_request.templates
         del self.appconf.during_request.files
@@ -131,6 +141,9 @@ class LivereloadishMiddleware:
                 request.path,
             )
             return response
+
+        if TYPE_CHECKING:
+            assert isinstance(response, HttpResponse), "satisfying mypy :("
 
         content = response.content.decode(response.charset)
         content_touched = False
@@ -215,7 +228,7 @@ class LivereloadishMiddleware:
             # UpdateCacheMiddleware/FetchFromCacheMiddleware/CacheMiddleware
             # from handling this response, to avoid issues around middleware
             # ordering whereby
-            request._cache_update_cache = False
+            request._cache_update_cache = False  # type: ignore[attr-defined]
             if not response.get("Cache-Control", ""):
                 response["Cache-Control"] = "private, no-store"
         return response

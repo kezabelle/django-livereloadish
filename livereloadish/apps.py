@@ -7,7 +7,7 @@ from collections import namedtuple
 from datetime import datetime, timezone
 from hashlib import sha1
 from tempfile import gettempdir
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, List, Any, Union, TYPE_CHECKING
 
 from asgiref.local import Local
 from django.apps import AppConfig, apps
@@ -32,11 +32,19 @@ from livereloadish.patches import (
     do_patch_template_compile_nodelist,
 )
 
+
+if TYPE_CHECKING:
+    from django.dispatch import Signal
+
+
 __all__ = ["logger", "Seen", "LiveReloadishConfig"]
 logger = logging.getLogger(__name__)
 
 
-def check_for_default_middleware(app_configs, **kwargs):
+# noinspection PyUnusedLocal
+def check_for_default_middleware(
+    app_configs: Any, **kwargs: Dict[str, Any]
+) -> List[Warning]:
     try:
         from django.conf import settings
         mws = settings.MIDDLEWARE
@@ -62,10 +70,10 @@ class Seen(
         ("relative_path", "absolute_path", "filename", "mtime", "requires_full_reload"),
     )
 ):
-    def mtime_as_utc_date(self):
+    def mtime_as_utc_date(self) -> datetime:
         return datetime.fromtimestamp(self.mtime, timezone.utc)
 
-    def _asdict(self):
+    def _asdict(self) -> Dict[str, Union[str, float, bool]]:
         return {
             "relative_path": self.relative_path,
             "absolute_path": self.absolute_path,
@@ -122,7 +130,7 @@ class LiveReloadishConfig(AppConfig):
     during_request = Local()
     django_reloader: Optional[BaseReloader] = None
 
-    def ready(self) -> bool:
+    def ready(self) -> bool:  # type: ignore[override]
         register("middleware")(check_for_default_middleware)
         if not self._should_be_enabled():
             logger.debug("Livereloadish is not applying patches")
@@ -262,15 +270,18 @@ class LiveReloadishConfig(AppConfig):
         return True
 
 
+# noinspection PyUnusedLocal
 @receiver(autoreload_started, dispatch_uid="livereloadish_reloader-connected")
-def save_reloader_to_appconfig(sender, signal, **kwargs):
+def save_reloader_to_appconfig(
+    sender: BaseReloader, signal: Signal, **kwargs: Dict[str, Any]
+) -> None:
     """
     I can't see a way to actually get a reference to the reloader in use within
     the autoreload module, nor anywhere in the stack frame history, so let's
     just patch one the heck in manually.
     """
     try:
-        appconf = apps.get_app_config("livereloadish")
+        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
         return None
     else:

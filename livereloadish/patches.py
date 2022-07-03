@@ -3,7 +3,7 @@ import mimetypes
 import os
 import posixpath
 import time
-from typing import Any, Union
+from typing import Any, Union, Optional
 from urllib.parse import urlsplit, urlunsplit
 
 from django.apps import apps
@@ -92,7 +92,7 @@ def patched_serve(
         content_type, seq, params = full_content_type.partition(";")
 
         try:
-            abspath = os.path.abspath(response.file_to_stream.name)
+            abspath = os.path.abspath(response.file_to_stream.name)  # type: ignore [union-attr]
         except AttributeError as e:
             logger.exception(
                 "Failed to get the FileResponse's file path for %s",
@@ -127,7 +127,7 @@ def patched_serve(
             content_type,
         )
     response.livereloadish_seen = True
-    request_mtime = request.GET.get("livereloadish", None)
+    request_mtime: Optional[Union[str, float]] = request.GET.get("livereloadish", None)
     if not request_mtime:
         # Can't know for sure if it's cacheable, bust it.
         add_never_cache_headers(response)
