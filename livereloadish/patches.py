@@ -3,7 +3,7 @@ import mimetypes
 import os
 import posixpath
 import time
-from typing import Any, Union, Optional, TYPE_CHECKING
+from typing import Any, Union, Optional, TYPE_CHECKING, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 from django.apps import apps
@@ -13,7 +13,7 @@ from django.core.files.storage import FileSystemStorage
 from django.core.handlers.wsgi import WSGIRequest
 from django.dispatch import receiver
 from django.http import HttpResponse, FileResponse, QueryDict, HttpResponseNotModified
-from django.template import Engine, Context, Template, NodeList
+from django.template import Engine, Context, Template, NodeList, Origin
 from django.template.loader_tags import ExtendsNode
 from django.templatetags.static import StaticNode
 from django.utils._os import safe_join
@@ -129,7 +129,7 @@ def patched_serve(
             abspath,
             content_type,
         )
-    response.livereloadish_seen = True
+    response.livereloadish_seen = True  # type: ignore[union-attr]
     request_mtime: Optional[Union[str, float]] = request.GET.get("livereloadish", None)
     if not request_mtime:
         # Can't know for sure if it's cacheable, bust it.
@@ -249,7 +249,7 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
                 abspath,
                 content_type,
             )
-    self.livereloadish_seen = True
+    self.livereloadish_seen = True  # type: ignore[attr-defined]
     return output
 
 
@@ -257,12 +257,14 @@ def do_patch_template_compile_nodelist() -> bool:
     if not hasattr(Template, "livereloadish_patched"):
         logger.debug("Patching: django.template.Template.compile_nodelist")
         Template.compile_nodelist = patched_template_compile_nodelist
-        Template.livereloadish_patched = True
+        Template.livereloadish_patched = True  # type: ignore[attr-defined]
         return True
     return False
 
 
-def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
+def patched_engine_find_template(
+    self: Engine, name: str, dirs=None, skip=None
+) -> Tuple[Template, Origin]:
     """
     This patch is required to ensure that by the time patched_extendsnode_get_parent
     executes we already have the Seen item in the data, otherwise we'll get
@@ -277,11 +279,11 @@ def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
     if hasattr(template, "template") and hasattr(
         template.template, "livereloadish_seen"
     ):
-        return template
+        return template, origin
     try:
         appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
-        return template
+        return template, origin
     try:
         abspath = os.path.abspath(origin.name)
     except AttributeError:
