@@ -145,7 +145,7 @@ class SSEView(View):
             # test the socket the same way as we do for the others, by finding it
             # in the stack. Bleh.
             parent_frame = sys._getframe().f_back
-            server_handler = parent_frame.f_locals.get("self", None)  # type: ignore [union-attr]
+            server_handler = parent_frame.f_locals.get("self", None)  # type: ignore[union-attr]
             try:
                 socket_handler = server_handler.channel.socket
             except AttributeError:
@@ -162,7 +162,7 @@ class SSEView(View):
                 # return ""
         else:
             parent_frame = sys._getframe().f_back
-            server_handler = parent_frame.f_locals.get("self", None)  # type: ignore [union-attr]
+            server_handler = parent_frame.f_locals.get("self", None)  # type: ignore[union-attr]
             if not isinstance(server_handler, ServerHandler):
                 logger.error(
                     "[%s] Livereloadish failed to walk the stack backwards to find the ServerHandler in charge of the socket, for connection termination",

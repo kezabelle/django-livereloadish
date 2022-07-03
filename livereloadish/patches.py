@@ -96,7 +96,7 @@ def patched_serve(
         content_type, seq, params = full_content_type.partition(";")
 
         try:
-            abspath = os.path.abspath(response.file_to_stream.name)  # type: ignore [union-attr]
+            abspath = os.path.abspath(response.file_to_stream.name)  # type: ignore[union-attr]
         except AttributeError as e:
             logger.exception(
                 "Failed to get the FileResponse's file path for %s",
