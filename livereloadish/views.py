@@ -20,6 +20,7 @@ from django.core.servers.basehttp import ServerHandler
 from django.http import (
     StreamingHttpResponse,
     JsonResponse,
+    HttpResponse,
     HttpResponseNotAllowed,
     Http404,
     FileResponse,
@@ -55,7 +56,7 @@ class Timer:
 
 def js(
     request: WSGIRequest, extension: str
-) -> Union[FileResponse, HttpResponseNotAllowed]:
+) -> Union[HttpResponse, FileResponse, HttpResponseNotAllowed]:
     if request.method not in {"GET"}:
         return HttpResponseNotAllowed({"GET"})
     if not settings.DEBUG:
@@ -71,7 +72,7 @@ def js(
         path=f"js/livereloadish.{extension}",
         document_root=os.path.join(os.path.dirname(__file__), "static"),
         show_indexes=False,
-    )
+    )  # type: ignore[return-value]
 
 
 class SSEView(View):

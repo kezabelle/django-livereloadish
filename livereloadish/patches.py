@@ -12,7 +12,7 @@ from django.contrib.staticfiles import finders
 from django.core.files.storage import FileSystemStorage
 from django.core.handlers.wsgi import WSGIRequest
 from django.dispatch import receiver
-from django.http import FileResponse, QueryDict, HttpResponseNotModified
+from django.http import HttpResponse, FileResponse, QueryDict, HttpResponseNotModified
 from django.template import Engine, Context, Template, NodeList
 from django.template.loader_tags import ExtendsNode
 from django.templatetags.static import StaticNode
@@ -63,11 +63,11 @@ def patched_serve(
     path: str,
     document_root=None,
     show_indexes=False,
-) -> Union[FileResponse, HttpResponseNotModified]:
+) -> Union[HttpResponse, FileResponse, HttpResponseNotModified]:
     __traceback_hide__ = True
-    response: Union[FileResponse, HttpResponseNotModified] = original_serve(
+    response: Union[HttpResponse, FileResponse, HttpResponseNotModified] = original_serve(
         request, path, document_root, show_indexes
-    )
+    )  # type: ignore[assignment]
     # Seen by another layer, skip work
     if hasattr(response, "livereloadish_seen"):
         return response
