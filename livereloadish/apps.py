@@ -151,7 +151,7 @@ class LiveReloadishConfig(AppConfig):
     def add_to_seen(
         self,
         content_type: str,
-        relative_path: str,
+        relative_path: Union[bytes, str],
         absolute_path: str,
         mtime: float,
         requires_full_reload: bool,

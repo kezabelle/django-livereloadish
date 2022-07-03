@@ -3,7 +3,7 @@ import mimetypes
 import os
 import posixpath
 import time
-from typing import Any, Union, Optional, TYPE_CHECKING, Tuple
+from typing import Any, Union, Optional, TYPE_CHECKING, Tuple, List, Dict
 from urllib.parse import urlsplit, urlunsplit
 
 from django.apps import apps
@@ -21,6 +21,7 @@ from django.utils.autoreload import file_changed
 from django.utils.cache import add_never_cache_headers, patch_cache_control
 from django.utils.http import parse_http_date, http_date
 from django.views import static
+from django.utils.autoreload import BaseReloader
 
 if TYPE_CHECKING:
     from .apps import LiveReloadishConfig
@@ -135,7 +136,7 @@ def patched_serve(
         # Can't know for sure if it's cacheable, bust it.
         add_never_cache_headers(response)
     try:
-        request_mtime = float(request_mtime)
+        request_mtime = float(request_mtime)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         # Someone fiddled the livereloadish=xxx var, forcibly uncache it.
         add_never_cache_headers(response)
@@ -172,8 +173,8 @@ def do_patch_static_serve() -> bool:
         logger.debug(
             "Patching: django.views.static.serve (used by django.contrib.staticfiles.views.serve)"
         )
-        static.serve = patched_serve
-        static.serve.livereloadish_seen = True
+        static.serve = patched_serve  # type: ignore[assignment]
+        static.serve.livereloadish_seen = True  # type: ignore[attr-defined]
         return True
     return False
 
@@ -218,7 +219,7 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
     if hasattr(self, "livereloadish_seen"):
         return output
     # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
-    if hasattr(self, "template") and hasattr(self.template, "livereloadish_seen"):
+    if hasattr(self, "template") and hasattr(self.template, "livereloadish_seen"):  # type: ignore[attr-defined]
         return output
 
     try:
@@ -232,6 +233,9 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
                 "Adding Template.compile_nodelist(%s) to tracked assets using stat syscall",
                 abspath,
             )
+            assert (
+                self.origin.template_name is not None
+            ), "mypy says this is possible; If this is hit, I need to fix it"
             appconf.add_to_seen(
                 content_type,
                 self.origin.template_name,
@@ -256,14 +260,17 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
 def do_patch_template_compile_nodelist() -> bool:
     if not hasattr(Template, "livereloadish_patched"):
         logger.debug("Patching: django.template.Template.compile_nodelist")
-        Template.compile_nodelist = patched_template_compile_nodelist
+        Template.compile_nodelist = patched_template_compile_nodelist  # type: ignore[assignment]
         Template.livereloadish_patched = True  # type: ignore[attr-defined]
         return True
     return False
 
 
 def patched_engine_find_template(
-    self: Engine, name: str, dirs=None, skip=None
+    self: Engine,
+    name: str,
+    dirs: None = None,
+    skip: Optional[List[Origin]] = None,
 ) -> Tuple[Template, Origin]:
     """
     This patch is required to ensure that by the time patched_extendsnode_get_parent
@@ -277,7 +284,7 @@ def patched_engine_find_template(
         return template, origin
     # It's a django.template.base.Template wrapping over a django.template.backends.django.Template
     if hasattr(template, "template") and hasattr(
-        template.template, "livereloadish_seen"
+        template.template, "livereloadish_seen"  # type: ignore[attr-defined]
     ):
         return template, origin
     try:
@@ -311,6 +318,9 @@ def patched_engine_find_template(
                     "Adding Engine.find_template(%s) to tracked assets using stat syscall",
                     abspath,
                 )
+                assert (
+                    origin.template_name is not None
+                ), "mypy says this is possible; If this is hit, I need to fix it"
                 appconf.add_to_seen(
                     content_type,
                     origin.template_name,
@@ -328,7 +338,7 @@ def patched_engine_find_template(
                     abspath,
                     content_type,
                 )
-    template.livereloadish_seen = True
+    template.livereloadish_seen = True  # type: ignore[attr-defined]
     return template, origin
 
 
@@ -340,8 +350,8 @@ def do_patch_engine_find_template() -> bool:
     """
     if not hasattr(Engine, "livereloadish_patched"):
         logger.debug("Patching: django.template.engine.Engine.find_template")
-        Engine.find_template = patched_engine_find_template
-        Engine.livereloadish_patched = True
+        Engine.find_template = patched_engine_find_template  # type: ignore[assignment]
+        Engine.livereloadish_patched = True  # type: ignore[attr-defined]
         return True
     return False
 
@@ -386,15 +396,15 @@ def patched_staticnode_url(self: StaticNode, context: Context) -> str:
     else:
         ident = time.time()
     qd = QueryDict(query, mutable=True)
-    qd.setdefault("livereloadish", ident)
+    qd.setdefault("livereloadish", str(ident))
     return urlunsplit((scheme, netloc, path, qd.urlencode(), fragment))
 
 
 def do_patch_staticnode_url() -> bool:
     if not hasattr(StaticNode, "livereloadish_patched"):
         logger.debug("Patching: django.templatetags.static.StaticNode.url")
-        StaticNode.url = patched_staticnode_url
-        StaticNode.livereloadish_patched = True
+        StaticNode.url = patched_staticnode_url  # type: ignore[assignment]
+        StaticNode.livereloadish_patched = True  # type: ignore[attr-defined]
         return True
     return False
 
@@ -432,8 +442,8 @@ def patched_extendsnode_get_parent(self: ExtendsNode, context: Context) -> Any:
 def do_patch_extendsnode_get_parent() -> bool:
     if not hasattr(ExtendsNode, "livereloadish_patched"):
         logger.debug("Patching: django.template.loader_tags.ExtendsNode.get_parent")
-        ExtendsNode.get_parent = patched_extendsnode_get_parent
-        ExtendsNode.livereloadish_patched = True
+        ExtendsNode.get_parent = patched_extendsnode_get_parent  # type: ignore[assignment]
+        ExtendsNode.livereloadish_patched = True  # type: ignore[attr-defined]
         return True
     return False
 
@@ -473,21 +483,23 @@ def patched_filesystemstorage_url(self: FileSystemStorage, name: str) -> str:
                 )
     else:
         ident = time.time()
-    qd.setdefault("livereloadish", ident)
+    qd.setdefault("livereloadish", str(ident))
     return urlunsplit((scheme, netloc, path, qd.urlencode(), fragment))
 
 
 def do_patch_filesystemstorage_url() -> bool:
     if not hasattr(FileSystemStorage, "livereloadish_patched"):
         logger.debug("Patching: django.core.files.storage.FileSystemStorage.url")
-        FileSystemStorage.url = patched_filesystemstorage_url
-        FileSystemStorage.livereloadish_patched = True
+        FileSystemStorage.url = patched_filesystemstorage_url  # type: ignore[assignment]
+        FileSystemStorage.livereloadish_patched = True  # type: ignore[attr-defined]
         return True
     return False
 
 
 @receiver(file_changed, dispatch_uid="livereloadish_file-changed")
-def listen_for_python_changes(sender, file_path, **kwargs):
+def listen_for_python_changes(
+    sender: BaseReloader, file_path: Any, **kwargs: Dict[str, Any]
+) -> None:
     abspath = str(file_path)
     content_type, encoding = mimetypes.guess_type(abspath)
     if content_type not in {"text/x-python", "application/x-python-code"}:
@@ -519,4 +531,4 @@ def listen_for_python_changes(sender, file_path, **kwargs):
             abspath,
             content_type,
         )
-    return
+    return None
