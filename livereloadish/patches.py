@@ -3,7 +3,7 @@ import mimetypes
 import os
 import posixpath
 import time
-from typing import Any, Union, Optional
+from typing import Any, Union, Optional, TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
 
 from django.apps import apps
@@ -21,6 +21,9 @@ from django.utils.autoreload import file_changed
 from django.utils.cache import add_never_cache_headers, patch_cache_control
 from django.utils.http import parse_http_date, http_date
 from django.views import static
+
+if TYPE_CHECKING:
+    from .apps import LiveReloadishConfig
 
 logger = logging.getLogger(__name__)
 original_serve = static.serve
@@ -61,8 +64,8 @@ for ext in markdowns:
 def patched_serve(
     request: WSGIRequest,
     path: str,
-    document_root=None,
-    show_indexes=False,
+    document_root: Optional[str] = None,
+    show_indexes: bool = False,
 ) -> Union[HttpResponse, FileResponse, HttpResponseNotModified]:
     __traceback_hide__ = True
     response: Union[HttpResponse, FileResponse, HttpResponseNotModified] = original_serve(
@@ -77,7 +80,7 @@ def patched_serve(
     # otherwise files may be missed between autoreloads.
     if isinstance(response, HttpResponseNotModified):
         path = posixpath.normpath(path).lstrip("/")
-        abspath = safe_join(document_root, path)
+        abspath = safe_join(document_root, path)  # type: ignore[arg-type]
         content_type, encoding = mimetypes.guess_type(abspath)
         logger.debug(
             "Resolving HttpResponseNotModified for %s, still intending to track",
@@ -103,7 +106,7 @@ def patched_serve(
             return response
 
     mtime = 0.0
-    appconf = apps.get_app_config("livereloadish")
+    appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     if content_type in appconf.seen:
         mtime = os.path.getmtime(abspath)
         logger.debug(
@@ -179,7 +182,7 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
     __traceback_hide__ = True
     output = original_template_compile_nodelist(self)
     try:
-        appconf = apps.get_app_config("livereloadish")
+        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
         return output
     try:
@@ -276,7 +279,7 @@ def patched_engine_find_template(self: Engine, name: str, dirs=None, skip=None):
     ):
         return template
     try:
-        appconf = apps.get_app_config("livereloadish")
+        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
         return template
     try:
@@ -360,7 +363,7 @@ def patched_staticnode_url(self: StaticNode, context: Context) -> str:
                 # And now, try and match this file to things that
                 # were loaded during "this request" (if there is one)
                 try:
-                    appconf = apps.get_app_config("livereloadish")
+                    appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
                     seen_files = appconf.during_request.files
                 except (LookupError, AttributeError):
                     logger.debug(
@@ -405,7 +408,7 @@ def patched_extendsnode_get_parent(self: ExtendsNode, context: Context) -> Any:
         else:
             content_type, encoding = mimetypes.guess_type(abspath)
             try:
-                appconf = apps.get_app_config("livereloadish")
+                appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
             except LookupError:
                 return template
             if content_type in appconf.seen and abspath in appconf.seen[content_type]:
@@ -450,7 +453,7 @@ def patched_filesystemstorage_url(self: FileSystemStorage, name: str) -> str:
             # And now, try and match this file to things that
             # were loaded during "this request" (if there is one)
             try:
-                appconf = apps.get_app_config("livereloadish")
+                appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
                 seen_files = appconf.during_request.files
             except (LookupError, AttributeError):
                 logger.debug(
@@ -488,7 +491,7 @@ def listen_for_python_changes(sender, file_path, **kwargs):
     if content_type not in {"text/x-python", "application/x-python-code"}:
         return None
     try:
-        appconf = apps.get_app_config("livereloadish")
+        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
         return None
 

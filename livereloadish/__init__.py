@@ -64,7 +64,7 @@ def watch_file(
         mtime = os.path.getmtime(absolute_path)
 
     try:
-        appconf: LiveReloadishConfig = django_apps_registry.get_app_config("livereloadish")
+        appconf: LiveReloadishConfig = django_apps_registry.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError as exc:
         raise ImproperlyConfigured("Unable to watch a file without an appconfig for 'livereloadish'") from exc
     if content_type in appconf.seen:
