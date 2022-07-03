@@ -82,9 +82,9 @@ class LivereloadishMiddleware:
             if remainder in match_scripts:
                 prelude, sep, extension = remainder.partition(".")
                 return gzip_page(never_cache(js))(request, extension)
-            elif remainder == "watch/":
+            elif remainder in {"watch", "watch/"}:
                 return never_cache(sse)(request)
-            elif remainder == "stats/":
+            elif remainder in {"stats", "stats/"}:
                 response = never_cache(stats)(request)
                 # For some reason I have to do this here so that CommonMiddleware
                 # doesn't cause it to throw with:
