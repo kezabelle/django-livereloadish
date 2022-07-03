@@ -7,7 +7,7 @@ from collections import namedtuple
 from datetime import datetime, timezone
 from hashlib import sha1
 from tempfile import gettempdir
-from typing import Dict, Literal, Optional, List, Any, Union, TYPE_CHECKING
+from typing import Dict, Literal, Optional, List, Any, Union, TYPE_CHECKING, NamedTuple
 
 from asgiref.local import Local
 from django.apps import AppConfig, apps
@@ -64,16 +64,17 @@ def check_for_default_middleware(
     return []
 
 
-class Seen(
-    namedtuple(
-        "Seen",
-        ("relative_path", "absolute_path", "filename", "mtime", "requires_full_reload"),
-    )
-):
+class Seen(NamedTuple):
+    relative_path: Union[bytes, str]
+    absolute_path: str
+    filename: Union[bytes, str]
+    mtime: float
+    requires_full_reload: bool
+
     def mtime_as_utc_date(self) -> datetime:
         return datetime.fromtimestamp(self.mtime, timezone.utc)
 
-    def _asdict(self) -> Dict[str, Union[str, float, bool]]:
+    def to_dict(self) -> Dict[str, Union[bytes, str, float, bool]]:
         return {
             "relative_path": self.relative_path,
             "absolute_path": self.absolute_path,
