@@ -107,7 +107,7 @@ def patched_serve(
             return response
 
     mtime = 0.0
-    appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+    appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     if content_type in appconf.seen:
         mtime = os.path.getmtime(abspath)
         logger.debug(
@@ -183,7 +183,7 @@ def patched_template_compile_nodelist(self: Template) -> NodeList:
     __traceback_hide__ = True
     output = original_template_compile_nodelist(self)
     try:
-        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+        appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
         return output
     try:
@@ -288,7 +288,7 @@ def patched_engine_find_template(
     ):
         return template, origin
     try:
-        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+        appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
         return template, origin
     try:
@@ -375,7 +375,7 @@ def patched_staticnode_url(self: StaticNode, context: Context) -> str:
                 # And now, try and match this file to things that
                 # were loaded during "this request" (if there is one)
                 try:
-                    appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+                    appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
                     seen_files = appconf.during_request.files
                 except (LookupError, AttributeError):
                     logger.debug(
@@ -420,7 +420,7 @@ def patched_extendsnode_get_parent(self: ExtendsNode, context: Context) -> Any:
         else:
             content_type, encoding = mimetypes.guess_type(abspath)
             try:
-                appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+                appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
             except LookupError:
                 return template
             if content_type in appconf.seen and abspath in appconf.seen[content_type]:
@@ -465,7 +465,7 @@ def patched_filesystemstorage_url(self: FileSystemStorage, name: str) -> str:
             # And now, try and match this file to things that
             # were loaded during "this request" (if there is one)
             try:
-                appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+                appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
                 seen_files = appconf.during_request.files
             except (LookupError, AttributeError):
                 logger.debug(
@@ -505,7 +505,7 @@ def listen_for_python_changes(
     if content_type not in {"text/x-python", "application/x-python-code"}:
         return None
     try:
-        appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+        appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
     except LookupError:
         return None
 

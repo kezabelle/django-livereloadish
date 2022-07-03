@@ -3,11 +3,10 @@ import os
 import pickle
 import time
 import pathlib
-from collections import namedtuple
 from datetime import datetime, timezone
 from hashlib import sha1
 from tempfile import gettempdir
-from typing import Dict, Literal, Optional, List, Any, Union, TYPE_CHECKING, NamedTuple
+from typing import Dict, Literal, Optional, List, Any, Union, NamedTuple, TYPE_CHECKING
 
 from asgiref.local import Local
 from django.apps import AppConfig, apps
@@ -274,7 +273,7 @@ class LiveReloadishConfig(AppConfig):
 # noinspection PyUnusedLocal
 @receiver(autoreload_started, dispatch_uid="livereloadish_reloader-connected")
 def save_reloader_to_appconfig(
-    sender: BaseReloader, signal: Signal, **kwargs: Dict[str, Any]
+    sender: BaseReloader, signal: "Signal", **kwargs: Dict[str, Any]
 ) -> None:
     """
     I can't see a way to actually get a reference to the reloader in use within

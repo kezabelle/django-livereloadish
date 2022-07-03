@@ -56,7 +56,7 @@ class LivereloadishMiddleware:
         if not settings.DEBUG:
             raise MiddlewareNotUsed("Livereloadish is only available if DEBUG=True")
         try:
-            self.appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
+            self.appconf: "LiveReloadishConfig" = apps.get_app_config("livereloadish")  # type: ignore[assignment]
         except LookupError:
             raise MiddlewareNotUsed("Livereloadish is in the INSTALLED_APPS")
         self.get_response = get_response
