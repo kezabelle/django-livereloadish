@@ -14,7 +14,11 @@ except ImportError:
     sensors_battery = None
 from django.apps import apps
 from django.conf import settings
-from django.core.exceptions import PermissionDenied, AppRegistryNotReady
+from django.core.exceptions import (
+    PermissionDenied,
+    AppRegistryNotReady,
+    ImproperlyConfigured,
+)
 from django.core.handlers.wsgi import WSGIRequest
 from django.core.servers.basehttp import ServerHandler
 from django.http import (
@@ -384,7 +388,7 @@ def stats(
 def tidyup() -> None:
     try:
         appconf: LiveReloadishConfig = apps.get_app_config("livereloadish")  # type: ignore[assignment]
-    except (LookupError, AppRegistryNotReady) as e:
+    except (LookupError, AppRegistryNotReady, ImproperlyConfigured) as e:
         return
     if appconf._should_be_enabled():
         try:
